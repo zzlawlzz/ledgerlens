@@ -1,0 +1,14 @@
+# Eval-in-CI placeholder (T-006). Implemented by T-030: compose.ci stack,
+# demo-data snapshot restore, eval.run --profile ci with thresholds and baseline.
+name: eval
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 3 * * *"   # nightly
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "TODO(T-030) eval harness is wired here after T-029"

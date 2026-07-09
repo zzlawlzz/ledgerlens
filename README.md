@@ -1,5 +1,7 @@
 # LedgerLens — Multi-Agent Financial Analysis Platform
 
+[![CI](https://github.com/zzlawlzz/ledgerlens/actions/workflows/ci.yml/badge.svg)](https://github.com/zzlawlzz/ledgerlens/actions/workflows/ci.yml)
+
 Self-hostable мультиагентная платформа финансового анализа: вопрос на естественном языке → многошаговый план → агенты (LangGraph, ReAct) работают с фактами отчётности (SQL) и нарративом (RAG) → ответ с числами, динамикой и цитатами на первоисточник, со стримом хода рассуждения в UI (AG-UI). Инструменты — MCP-серверы, межагентное взаимодействие — A2A (в т.ч. между нодами), tiered-роутинг LLM (локальный CPU-инференс + cloud API), eval в CI, наблюдаемость в Grafana.
 
 > ⚠️ Система предоставляет аналитику по публичной отчётности и **не даёт инвестиционных рекомендаций**.

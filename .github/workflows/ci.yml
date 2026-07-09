@@ -1,0 +1,67 @@
+# CI skeleton (T-006): lint -> unit (with postgres migrations) -> build.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy .
+
+  unit:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: ledgerlens
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d ledgerlens"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ledgerlens
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ci-password
+      POSTGRES_RO_PASSWORD: ci-ro-password
+      EDGAR_USER_AGENT: "ledgerlens ci@example.com"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      # Schema reproducibility proof: migrations apply to a clean service container.
+      - run: uv run alembic upgrade head
+      # Re-run must be a no-op.
+      - run: uv run alembic upgrade head
+      - run: uv run pytest -m "not slow"
+      # DB integration tests need only the postgres service — run them here too.
+      - run: uv run pytest -m slow tests/integration/test_db.py
+
+  build:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-password
+    steps:
+      - uses: actions/checkout@v4
+      # App images appear in T-015; until then validate compose config.
+      - run: docker compose config --quiet
