@@ -1,5 +1,5 @@
 # LedgerLens — task automation. TODO-stubs are implemented by their backlog tasks.
-.PHONY: up down lint test ingest demo seed eval smoke
+.PHONY: up down lint test test-integration ingest demo seed eval smoke db-up db-migrate db-reset
 
 lint:  ## Static checks: format, lint, types
 	uv run ruff format --check .
@@ -8,6 +8,19 @@ lint:  ## Static checks: format, lint, types
 
 test:  ## Unit tests (no network, no docker)
 	uv run pytest -m "not slow"
+
+test-integration:  ## Integration tests (require running postgres, see db-up)
+	uv run pytest -m slow
+
+db-up:  ## Start postgres and wait until healthy
+	docker compose up -d --wait postgres
+
+db-migrate:  ## Apply alembic migrations
+	uv run alembic upgrade head
+
+db-reset:  ## Destroy volumes and re-create the schema from scratch
+	docker compose down -v
+	$(MAKE) db-up db-migrate
 
 up:  ## Start the full stack
 	@echo "TODO(T-015): docker compose up"

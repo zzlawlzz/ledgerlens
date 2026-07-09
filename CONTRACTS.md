@@ -136,7 +136,7 @@ CREATE TABLE filings (
 CREATE TABLE financial_facts (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   filing_id BIGINT NOT NULL REFERENCES filings(id) ON DELETE CASCADE,
-  company_id BIGINT NOT NULL REFERENCES companies(id),   -- денормализация для простого SQL агента
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,   -- денормализация для простого SQL агента; CASCADE добавлен в T-005: без него NO ACTION-проверка этого FK срабатывает раньше каскада companies→filings→facts и блокирует удаление компании
   metric TEXT NOT NULL,                -- каноническое имя (§7)
   value NUMERIC(28,4) NOT NULL, unit TEXT NOT NULL,      -- 'USD'|'RUB'|'shares'|'USD/share'
   period_start DATE, period_end DATE NOT NULL,
