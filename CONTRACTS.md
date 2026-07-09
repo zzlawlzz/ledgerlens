@@ -2,7 +2,7 @@
 
 **Проект:** **LedgerLens** (Q-08) — self-hostable мультиагентная платформа финансового анализа
 **Аудитория:** агент-разработчик. Документ дополняет ARCHITECTURE.md конкретикой: DDL, схемы, интерфейсы, конвенции.
-**Статус:** v1 — рабочие дефолты. Всё, что помечено `[verify:T-002]`, проверяется задачей T-002 бэклога на актуальность (знания могли устареть) и после проверки фиксируется здесь.
+**Статус:** v1.1 — дефолты проверены задачей T-002 (2026-07-10), метки `[verify:T-002]` сняты. Источники и даты проверки — `docs/research/adr-notes.md`. Точные версии пакетов запинены в `uv.lock`; мажоры не апгрейдить без отдельной задачи.
 
 ---
 
@@ -14,17 +14,17 @@
 | Линт/типы | ruff (line-length 100) + mypy | в pre-commit и CI |
 | Тесты | pytest + pytest-asyncio + respx (записанные HTTP-фикстуры) | |
 | Web-бэкенд | FastAPI + uvicorn, SSE | |
-| Агенты | LangGraph (+ langgraph-checkpoint-postgres) `[verify:T-002]` | |
-| MCP | официальный python-SDK `mcp` (FastMCP) + `langchain-mcp-adapters` `[verify:T-002]` | |
-| A2A | `a2a-sdk` (python) `[verify:T-002]` | |
-| AG-UI | серверная python-библиотека протокола + `@ag-ui/client` на фронте `[verify:T-002]` | |
+| Агенты | LangGraph **1.2.x** (v1-линия; `create_react_agent` — в `langgraph-prebuilt`) + `langgraph-checkpoint-postgres` 3.1 ✅T-002 | |
+| MCP | python-SDK `mcp` **1.28+** (FastMCP, транспорт streamable-HTTP) + `langchain-mcp-adapters` **0.3** ✅T-002 | |
+| A2A | `a2a-sdk` **1.1** (протокол A2A v1.0, март 2026; подписанные AgentCard) ✅T-002 | |
+| AG-UI | `ag-ui-protocol` (python, PyPI) + `@ag-ui/client` на фронте; имена событий подтверждены (§10) ✅T-002 | |
 | БД | PostgreSQL 16 + pgvector; SQLAlchemy 2 (async) + Alembic | |
 | Векторная БД | Qdrant (server, docker) + qdrant-client | ADR-2 |
-| Эмбеддинги | **BAAI/bge-m3** (1024d, multilingual — закрывает будущий RU-режим) через fastembed/ONNX на CPU `[verify:T-002]` | ADR-6 дефолт |
-| Sparse (hybrid) | fastembed BM25-модель + server-side fusion (RRF) в Qdrant Query API `[verify:T-002]` | |
-| Reranker | bge-reranker-v2-m3 (CPU, ONNX); fallback: ms-marco-MiniLM cross-encoder `[verify:T-002]` | |
-| Локальный LLM | Ollama; модель: MoE-квантизация класса **qwen3:30b-a3b** — железо позволяет (Q-06: 2×EPYC 7551, 128 ГБ RAM); лёгкий fallback qwen3:4b `[verify:T-002]`, финализируется CPU-бенчмарком T-037 | ADR-3 дефолт |
-| Cloud LLM | **DeepSeek** (решение Q-01): cheap = deepseek-chat, strong/judge = deepseek-reasoner `[verify:T-002]`. Облачного fallback между провайдерами нет — резерв только локальная модель (риск зафиксирован в Q-01) | ADR-7 решён |
+| Эмбеддинги | **BAAI/bge-m3** (1024d, multilingual, 8192 ток.) через fastembed **0.8**/ONNX на CPU — актуальность подтверждена ✅T-002 | ADR-6 решён |
+| Sparse (hybrid) | fastembed BM25 + server-side fusion (RRF) в Qdrant Query API (`query_points` + `prefetch`) ✅T-002 | |
+| Reranker | bge-reranker-v2-m3 (CPU, ONNX; поддержан fastembed); fallback: ms-marco-MiniLM cross-encoder ✅T-002 | |
+| Локальный LLM | Ollama (0.30+); дефолт-кандидат: **qwen3.5:27b** (sparse-MoE, 17 ГБ Q4, 256K ctx — сменил qwen3:30b-a3b по T-002); лёгкий fallback **qwen3.5:4b**; финал — CPU-бенчмарк T-037 (кандидаты: qwen3.5:27b / qwen3:30b-a3b / qwen3.5:122b — 81 ГБ, в 128 ГБ RAM влезает) | ADR-3 дефолт |
+| Cloud LLM | **DeepSeek** (Q-01), пины T-002 (2026-07-10): cheap = **deepseek-v4-flash** (thinking disabled), strong/judge = **deepseek-v4-pro** (thinking enabled). ⚠️ Старые имена deepseek-chat/deepseek-reasoner **deprecated 2026-07-24** — не использовать. Облачного fallback между провайдерами нет — резерв только локальная модель (риск Q-01) | ADR-7 решён |
 | HTTP-клиент | httpx + tenacity (ретраи) | |
 | SQL-валидация | sqlglot | для sql_query guard |
 | Логи | structlog (JSON) | |
@@ -33,7 +33,7 @@
 | Наблюдаемость | Grafana OSS + datasource PostgreSQL (без отдельного TSDB — метрики из таблиц) | |
 | CI | GitHub Actions (Q-08: репо `ledgerlens`, приватный до G2, MIT) | |
 
-Правило: версии пиновать в `pyproject.toml` / `package.json` после T-002; не апгрейдить мажоры без задачи.
+Правило: версии запинены T-002 (2026-07-10) в `pyproject.toml`+`uv.lock` (ключевые: langgraph 1.2.8, mcp 1.28.1, langchain-mcp-adapters 0.3.0, a2a-sdk 1.1.0, ag-ui-protocol 0.1.19, qdrant-client 1.18.0, fastembed 0.8.0, sqlalchemy 2.0.51, sqlglot 30.12); `package.json` пинуется при создании фронта (T-024). Не апгрейдить мажоры без задачи.
 
 ---
 
@@ -334,7 +334,7 @@ event ∈ run_started | plan_created | plan_updated | step_started | agent_thoug
         guardrail | answer_delta | budget | run_finished | run_error
 ```
 
-**Маппинг TraceEvent → AG-UI** (имена событий сверить с закреплённой версией протокола `[verify:T-002]`):
+**Маппинг TraceEvent → AG-UI** (имена событий сверены с `ag-ui-protocol` 0.1.x — T-002, 2026-07-10: RUN_*, STATE_SNAPSHOT/STATE_DELTA — JSON Patch RFC 6902, TOOL_CALL_*, TEXT_MESSAGE_*, CUSTOM — всё присутствует в EventType протокола):
 
 | TraceEvent | AG-UI |
 |---|---|
@@ -359,9 +359,9 @@ event ∈ run_started | plan_created | plan_updated | step_started | agent_thoug
 
 ```yaml
 tiers:
-  local:        {provider: ollama,   model: "${LOCAL_MODEL}",           timeout_s: 60}
-  cloud_cheap:  {provider: deepseek, model: deepseek-chat,              timeout_s: 60}
-  cloud_strong: {provider: deepseek, model: deepseek-reasoner,          timeout_s: 120}  # пин в T-002; Q-01: единственный облачный провайдер
+  local:        {provider: ollama,   model: "${LOCAL_MODEL}",  timeout_s: 60}
+  cloud_cheap:  {provider: deepseek, model: deepseek-v4-flash, thinking: disabled, timeout_s: 60}
+  cloud_strong: {provider: deepseek, model: deepseek-v4-pro,   thinking: enabled,  timeout_s: 120}  # пины T-002 (2026-07-10); Q-01: единственный облачный провайдер
 policy:                      # порядок = основная → fallback-цепочка
   route:       [local, cloud_cheap]
   extract:     [local, cloud_cheap]
@@ -375,6 +375,8 @@ retries: {attempts: 2, backoff: exponential}
 ```
 
 Семантика: недоступность/таймаут/429 → следующий tier в списке, `fallback_used=true` в `llm_calls`. Тиры с отсутствующим ключом выкидываются из цепочки на старте (warning). Цены — `config/prices.yaml` (`model: {in_per_1m, out_per_1m}`), стоимость считается на каждый вызов. Каждый LLM-вызов в системе идёт **только** через роутер.
+
+Пины DeepSeek (T-002, 2026-07-10, источник api-docs.deepseek.com): thinking-режим переключается параметром запроса `thinking: {"type": "enabled"|"disabled"}` (дефолт enabled; дополнительно `reasoning_effort: high|max`); обе V4-модели поддерживают tool calls и `response_format: json_object`; контекст 1M, max output 384K; concurrency-лимиты flash 2500 / pro 500. Цены для `config/prices.yaml`: v4-flash **$0.14 / $0.28** за 1M in/out (cache-hit in $0.0028); v4-pro **$0.435 / $0.87** (cache-hit $0.003625). Обоснование strong=v4-pro (а не alias-преемника reasoner→v4-flash-thinking): флагманское качество для plan/synthesize/judge при цене **ниже** одобренной в Q-01 (reasoner стоил $0.55/$2.19); откат на all-flash — одна строка конфига. ⚠️ Старые имена deepseek-chat/deepseek-reasoner deprecated 2026-07-24 — в коде не использовать.
 
 ## 12. Промпты и guardrail
 

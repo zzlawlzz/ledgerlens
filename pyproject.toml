@@ -5,10 +5,30 @@ description = "Self-hostable multi-agent financial analysis platform"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "a2a-sdk>=1.1.0",
+    "ag-ui-protocol>=0.1.19",
+    "alembic>=1.18.5",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.139.0",
+    "fastembed>=0.8.0",
+    "httpx>=0.28.1",
+    "langchain-mcp-adapters>=0.3.0",
+    "langgraph>=1.2.8",
+    "langgraph-checkpoint-postgres>=3.1.0",
+    "mcp>=1.28.1",
+    "pydantic-settings>=2.14.2",
+    "qdrant-client>=1.18.0",
+    "sqlalchemy[asyncio]>=2.0.51",
+    "sqlglot>=30.12.0",
+    "structlog>=26.1.0",
+    "tenacity>=9.1.4",
+    "uvicorn[standard]>=0.51.0",
+]
 
 [dependency-groups]
-# Version floors only; exact pins are fixed by research task T-002 (CONTRACTS.md §1).
+# Floors here; exact versions are locked in uv.lock (T-002, 2026-07-10).
+# Do not bump majors without a dedicated backlog task (CONTRACTS.md §1).
 dev = [
     "mypy>=1.14",
     "pre-commit>=4.0",
