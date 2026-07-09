@@ -255,7 +255,7 @@ CREATE TABLE prices (                  -- опционально (price_enrich)
 | total_assets | Активы | Assets | 1600 |
 | total_liabilities | Обязательства | Liabilities | 1400+1500 |
 | equity | Собственный капитал | StockholdersEquity → StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest | 1300 |
-| cash_and_equivalents | Денежные средства | CashAndCashEquivalentsAtCarryingValue | 1250 |
+| cash_and_equivalents | Денежные средства | CashAndCashEquivalentsAtCarryingValue → CashAndDueFromBanks (банки, добавлен T-009) | 1250 |
 | long_term_debt | Долгосрочный долг | LongTermDebtNoncurrent → LongTermDebt | 1410 |
 | operating_cash_flow | Денежный поток от операций | NetCashProvidedByUsedInOperatingActivities | 4100 |
 | capex | Капитальные затраты | PaymentsToAcquirePropertyPlantAndEquipment | 4221 |

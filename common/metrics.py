@@ -103,7 +103,9 @@ _METRIC_DEFS: tuple[MetricDef, ...] = (
         canonical="cash_and_equivalents",
         description="Cash and cash equivalents",
         unit_hint="currency",
-        gaap_tags=("CashAndCashEquivalentsAtCarryingValue",),
+        # CashAndDueFromBanks appended in T-009: banks (e.g. JPM) report cash
+        # under this tag and lack the generic one.
+        gaap_tags=("CashAndCashEquivalentsAtCarryingValue", "CashAndDueFromBanks"),
         rsbu_codes=("1250",),
     ),
     MetricDef(
