@@ -1,0 +1,20 @@
+# RAG pipeline parameters (ARCHITECTURE.md §3.5; consumed by T-018/T-019).
+chunking:
+  chunk_size_tokens: 800
+  overlap_tokens: 150
+
+embedding:
+  model: BAAI/bge-m3          # ADR-6 (closed by T-002): dense 1024d, multilingual
+  dim: 1024
+  sparse_model: Qdrant/bm25   # fastembed sparse model for hybrid search
+
+search:
+  top_k: 5
+  prefetch_limit: 20          # per-vector candidates before fusion (RRF)
+  rerank:
+    enabled: true
+    model: BAAI/bge-reranker-v2-m3
+  # Relevance floor after rerank -> no_results=true (anti-hallucination).
+  # Placeholder value; calibrated on 5 positive / 5 negative queries in T-019 —
+  # methodology and final value are documented here when T-019 lands.
+  score_threshold: 0.3

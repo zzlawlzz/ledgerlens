@@ -1,0 +1,12 @@
+# Application mode and data sources (CONTRACTS.md §5; T-003).
+mode: ${APP_MODE:us}          # us | ru
+
+# Adapter registry: source name -> adapter implementation (resolved in T-007).
+adapters:
+  us: edgar
+  ru: moex
+
+# Default demo watchlist (Q-09: owner default, finalize before T-028).
+watchlist:
+  us: [AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA, JPM, JNJ, XOM]
+  ru: [SBER, GAZP, LKOH]

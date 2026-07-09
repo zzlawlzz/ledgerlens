@@ -1,0 +1,32 @@
+# Model Router tiers and per-task-class policy (CONTRACTS.md §11).
+# Model pins: T-002 (2026-07-10). deepseek-chat/reasoner are deprecated 2026-07-24 — do not use.
+tiers:
+  local:
+    provider: ollama
+    model: "${LOCAL_MODEL}"
+    timeout_s: 60
+  cloud_cheap:
+    provider: deepseek
+    model: deepseek-v4-flash
+    thinking: disabled
+    timeout_s: 60
+  cloud_strong:
+    provider: deepseek
+    model: deepseek-v4-pro
+    thinking: enabled
+    timeout_s: 120
+
+# Order = primary -> fallback chain. Tiers with a missing API key are dropped at startup.
+policy:
+  route: [local, cloud_cheap]
+  extract: [local, cloud_cheap]
+  guard: [local, cloud_cheap]
+  summarize_event: [cloud_cheap, local]
+  plan: [cloud_strong, cloud_cheap]
+  reason: [cloud_cheap, cloud_strong]
+  synthesize: [cloud_strong, cloud_cheap]
+  judge: [cloud_strong]
+
+retries:
+  attempts: 2
+  backoff: exponential

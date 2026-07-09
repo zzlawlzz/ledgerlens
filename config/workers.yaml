@@ -1,0 +1,6 @@
+# Worker registry (CONTRACTS.md §10; dispatch by skills — T-020/T-021/T-031).
+# url: "local" means in-process LocalWorkerClient; anything else is an A2A endpoint.
+workers:
+  - name: worker-local
+    url: local
+    skills: [financial_sql_analysis, narrative_rag_analysis]

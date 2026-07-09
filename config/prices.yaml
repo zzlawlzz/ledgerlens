@@ -1,0 +1,11 @@
+# USD per 1M tokens (T-002, 2026-07-10; source: api-docs.deepseek.com, list prices since 2026-05-22).
+# Local (ollama) calls are costed at 0 by the router — no entry needed here.
+models:
+  deepseek-v4-flash:
+    in_per_1m: 0.14
+    out_per_1m: 0.28
+    cache_hit_in_per_1m: 0.0028
+  deepseek-v4-pro:
+    in_per_1m: 0.435
+    out_per_1m: 0.87
+    cache_hit_in_per_1m: 0.003625
