@@ -46,8 +46,11 @@ seed:  ## Restore demo data snapshot without hitting EDGAR
 eval:  ## Run eval harness against a running stack
 	@echo "TODO(T-029): eval harness"
 
-demo-ingest:  ## Ingest the demo set (live EDGAR with disk cache)
-	uv run python -m ingestion.run --source edgar --tickers AAPL,MSFT,NVDA,GOOGL,AMZN --years 3
+demo-ingest:  ## Ingest the demo set (live EDGAR with disk cache) incl. embeddings
+	uv run python -m ingestion.run --source edgar --tickers AAPL,MSFT,NVDA,GOOGL,AMZN --years 3 --embed
+
+reindex:  ## Rebuild the Qdrant index from stored sections (no source traffic)
+	uv run python -m ingestion.reindex
 
 smoke:  ## compose up + ingest when empty + smoke_test.py (gate G1)
 	docker compose up -d --wait

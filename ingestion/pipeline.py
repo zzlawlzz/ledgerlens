@@ -69,6 +69,7 @@ class TickerReport:
     filings: int = 0
     facts: int = 0
     sections: int = 0
+    chunks: int = 0  # filled by the embedding step (T-018)
     error: str | None = None
 
     @property

@@ -30,12 +30,12 @@ def _default_tickers(app_config: dict[str, object]) -> list[str]:
 
 
 def format_report(reports: list[TickerReport]) -> str:
-    header = f"{'ticker':<8} {'filings':>8} {'facts':>8} {'sections':>9}  error"
+    header = f"{'ticker':<8} {'filings':>8} {'facts':>8} {'sections':>9} {'chunks':>7}  error"
     lines = [header, "-" * len(header)]
     for report in reports:
         lines.append(
             f"{report.ticker:<8} {report.filings:>8} {report.facts:>8} "
-            f"{report.sections:>9}  {report.error or '-'}"
+            f"{report.sections:>9} {report.chunks:>7}  {report.error or '-'}"
         )
     return "\n".join(lines)
 
@@ -46,6 +46,8 @@ async def run_ingest(
     *,
     years: int,
     skip_narrative: bool = False,
+    embed: bool = False,
+    write_pgvector: bool = False,
 ) -> list[TickerReport]:
     log = get_logger(node="ingestion")
     session_factory = get_session_factory()
@@ -53,6 +55,13 @@ async def run_ingest(
         (company.ticker or company.external_id): company
         for company in await adapter.list_entities(tickers)
     }
+    embedder = indexer = None
+    if embed and not skip_narrative:
+        from rag.embedding import ChunkEmbedder
+        from rag.indexer import NarrativeIndexer
+
+        embedder = ChunkEmbedder()
+        indexer = NarrativeIndexer(embedder=embedder)
     reports: list[TickerReport] = []
     for ticker in tickers:
         company = companies.get(ticker.upper())
@@ -60,15 +69,34 @@ async def run_ingest(
             reports.append(TickerReport(ticker=ticker, error="unknown ticker for this source"))
             continue
         try:
-            reports.append(
-                await ingest_company(
-                    adapter,
-                    session_factory,
-                    company,
-                    years=years,
-                    skip_narrative=skip_narrative,
-                )
+            report = await ingest_company(
+                adapter,
+                session_factory,
+                company,
+                years=years,
+                skip_narrative=skip_narrative,
             )
+            if embedder is not None and indexer is not None:
+                from sqlalchemy import text
+
+                from ingestion.embed import embed_company_sections
+
+                async with session_factory() as session:
+                    company_id = (
+                        await session.execute(
+                            text("SELECT id FROM companies WHERE source = :s AND external_id = :e"),
+                            {"s": company.source, "e": company.external_id},
+                        )
+                    ).scalar_one()
+                embed_report = await embed_company_sections(
+                    int(company_id),
+                    session_factory,
+                    embedder=embedder,
+                    indexer=indexer,
+                    write_pgvector=write_pgvector,
+                )
+                report.chunks = embed_report.chunks
+            reports.append(report)
         except LedgerLensError as exc:
             log.error("ticker_failed", ticker=ticker, error=str(exc))
             reports.append(TickerReport(ticker=ticker, error=str(exc)))
@@ -81,6 +109,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tickers", default=None, help="comma-separated (default: watchlist)")
     parser.add_argument("--years", type=int, default=3)
     parser.add_argument("--skip-narrative", action="store_true")
+    parser.add_argument("--embed", action="store_true", help="chunk+embed sections into Qdrant")
+    parser.add_argument(
+        "--pgvector", action="store_true", help="also store dense vectors in section_chunks"
+    )
     args = parser.parse_args(argv)
 
     configure_logging("ingestion")
@@ -96,7 +128,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     reports = asyncio.run(
-        run_ingest(adapter, tickers, years=args.years, skip_narrative=args.skip_narrative)
+        run_ingest(
+            adapter,
+            tickers,
+            years=args.years,
+            skip_narrative=args.skip_narrative,
+            embed=args.embed,
+            write_pgvector=args.pgvector,
+        )
     )
     print(format_report(reports))
     succeeded = [r for r in reports if r.ok]
