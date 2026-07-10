@@ -98,15 +98,27 @@ def get_logger(**initial_values: Any) -> structlog.typing.FilteringBoundLogger:
 
 def bind_run_context(
     run_id: str | None = None, step_id: str | None = None, node: str | None = None
-) -> None:
-    """Bind correlation ids to the current context (CONTRACTS.md §4)."""
+) -> dict[str, Any]:
+    """Bind correlation ids (CONTRACTS.md §4); returns tokens for reset.
+
+    Nested scopes (orchestrator -> worker in the same task context) must use
+    ``reset_run_context(tokens)`` rather than ``unbind_run_context()`` — a
+    blind unbind wipes the caller's binding too.
+    """
     values = {
         key: value
         for key, value in (("run_id", run_id), ("step_id", step_id), ("node", node))
         if value is not None
     }
-    if values:
-        structlog.contextvars.bind_contextvars(**values)
+    if not values:
+        return {}
+    return dict(structlog.contextvars.bind_contextvars(**values))
+
+
+def reset_run_context(tokens: dict[str, Any]) -> None:
+    """Restore the context exactly as it was before the paired bind."""
+    if tokens:
+        structlog.contextvars.reset_contextvars(**tokens)
 
 
 def unbind_run_context(*keys: str) -> None:

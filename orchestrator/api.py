@@ -1,0 +1,166 @@
+"""Chat API v0 (T-014): question -> SSE stream of TraceEvents -> answer.
+
+No Plan-and-Execute yet — a single-step "plan" delegates straight to the
+ReAct worker through the WorkerClient interface (T-020/T-021 swap the
+implementation without touching this API).
+
+Try it:
+    curl -N -X POST http://localhost:8000/api/chat \
+         -H "Content-Type: application/json" \
+         -d '{"question": "What was the revenue of AAPL in FY2024?"}'
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+
+from common.agents import WorkerResult, WorkerTask
+from common.config import get_settings
+from common.db import get_session_factory
+from common.logging import bind_run_context, configure_logging, get_logger, reset_run_context
+from common.tracing import Subscriber, TraceBus, TraceEvent, make_log_subscriber
+from orchestrator.persistence import create_run, finalize_run, make_db_subscriber
+from orchestrator.worker_client import LocalWorkerClient, WorkerClient
+
+TRACE_BUS = TraceBus()
+STREAM_QUEUE_MAX = 1000
+
+_infrastructure_ready = False
+
+
+def ensure_stream_infrastructure() -> None:
+    """Attach log/DB subscribers once per process (idempotent; used by tests too)."""
+    global _infrastructure_ready
+    if _infrastructure_ready:
+        return
+    configure_logging("orchestrator")
+    TRACE_BUS.subscribe(make_log_subscriber())
+    TRACE_BUS.subscribe(make_db_subscriber())
+    _infrastructure_ready = True
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    ensure_stream_infrastructure()
+    yield
+
+
+app = FastAPI(title="LedgerLens API", lifespan=_lifespan)
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    mode: str = "us"
+
+
+def get_worker_client() -> WorkerClient:
+    return LocalWorkerClient(trace_bus=TRACE_BUS)
+
+
+async def _execute_run(
+    run_id: uuid.UUID, step_id: uuid.UUID, request: ChatRequest, client: WorkerClient
+) -> None:
+    """The actual run: worker + DB finalization. Independent of the SSE relay —
+    a client disconnect never leaves the run in 'running' forever."""
+    started = time.perf_counter()
+    context_tokens = bind_run_context(run_id=str(run_id), step_id=str(step_id), node="orchestrator")
+    result: WorkerResult | None = None
+    error: str | None = None
+    try:
+        await TRACE_BUS.publish("run_started", {"question": request.question, "mode": request.mode})
+        await TRACE_BUS.publish("step_started", {"node": "worker", "goal": request.question})
+        task = WorkerTask(
+            task_id=str(step_id),
+            run_id=str(run_id),
+            goal=request.question,
+        )
+        result = await client.run(task)
+        await TRACE_BUS.publish(
+            "step_finished", {"status": result.status, "answer_preview": result.answer[:200]}
+        )
+    except Exception as exc:  # noqa: BLE001 — a run must always be finalized
+        error = str(exc)
+        get_logger(node="orchestrator").error("run_crashed", error=error)
+    finally:
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        try:
+            await finalize_run(run_id, step_id, result=result, error=error, latency_ms=latency_ms)
+        except Exception as exc:  # noqa: BLE001
+            get_logger(node="orchestrator").error("finalize_failed", error=str(exc))
+        if error is not None:
+            await TRACE_BUS.publish("run_error", {"error": error}, run_id=str(run_id))
+        else:
+            assert result is not None
+            await TRACE_BUS.publish(
+                "run_finished",
+                {
+                    "status": result.status,
+                    "answer": result.answer,
+                    "usage": result.usage.model_dump(),
+                    "latency_ms": latency_ms,
+                },
+                run_id=str(run_id),
+            )
+        reset_run_context(context_tokens)
+
+
+def _subscribe_run_events(run_id: str) -> tuple[asyncio.Queue[TraceEvent], Subscriber]:
+    """Subscribe BEFORE the run starts so no early event is lost."""
+    queue: asyncio.Queue[TraceEvent] = asyncio.Queue(maxsize=STREAM_QUEUE_MAX)
+
+    async def _enqueue(event: TraceEvent) -> None:
+        if event.run_id == run_id:
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                pass  # slow client: drop intermediate events; terminal ones still fit
+
+    TRACE_BUS.subscribe(_enqueue)
+    return queue, _enqueue
+
+
+async def _drain_events(
+    queue: asyncio.Queue[TraceEvent], subscriber: Subscriber
+) -> AsyncIterator[str]:
+    try:
+        while True:
+            event = await queue.get()
+            yield f"data: {json.dumps(event.as_dict(), ensure_ascii=False, default=str)}\n\n"
+            if event.event in ("run_finished", "run_error"):
+                return
+    finally:
+        TRACE_BUS.unsubscribe(subscriber)
+
+
+@app.post("/api/chat")
+async def chat(request: ChatRequest) -> StreamingResponse:
+    ensure_stream_infrastructure()
+    run_id, step_id = await create_run(request.question, request.mode)
+    queue, subscriber = _subscribe_run_events(str(run_id))
+    asyncio.create_task(_execute_run(run_id, step_id, request, get_worker_client()))
+    return StreamingResponse(
+        _drain_events(queue, subscriber),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Run-Id": str(run_id)},
+    )
+
+
+@app.get("/healthz")
+async def healthz() -> JSONResponse:
+    try:
+        factory = get_session_factory()
+        async with factory() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001 — health endpoint reports, never raises
+        return JSONResponse({"status": "unhealthy", "db": "unreachable"}, status_code=503)
+    return JSONResponse({"status": "ok", "mode": get_settings().app_mode})

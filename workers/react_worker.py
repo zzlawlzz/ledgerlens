@@ -25,7 +25,7 @@ from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import create_react_agent
 
 from common.agents import WorkerEvidence, WorkerResult, WorkerTask, WorkerUsage
-from common.logging import bind_run_context, get_logger, unbind_run_context
+from common.logging import bind_run_context, get_logger, reset_run_context
 from common.tracing import TraceBus, TraceEvent
 from model_router.simple_client import simple_chat_model
 from tools.sql.core import schema_introspect, sql_query
@@ -133,7 +133,14 @@ def _render_task(task: WorkerTask) -> str:
     return "\n".join(parts)
 
 
-async def _publish_ai_message(message: AIMessage, bus: TraceBus, usage: WorkerUsage) -> str:
+async def _publish_ai_message(
+    message: AIMessage,
+    bus: TraceBus,
+    usage: WorkerUsage,
+    *,
+    provider: str,
+    model_name: str,
+) -> str:
     """Publish thought/llm_call events for one AI message; returns its text."""
     content = message.content if isinstance(message.content, str) else str(message.content)
     if content.strip():
@@ -148,6 +155,8 @@ async def _publish_ai_message(message: AIMessage, bus: TraceBus, usage: WorkerUs
         "llm_call",
         {
             "task_class": "reason",
+            "provider": provider,
+            "model": model_name,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
             "tool_calls": [call["name"] for call in message.tool_calls],
@@ -172,7 +181,7 @@ async def run_worker_task(
             collected.append(event)
 
     bus.subscribe(_collect)
-    bind_run_context(run_id=task.run_id, step_id=task.task_id, node="worker")
+    context_tokens = bind_run_context(run_id=task.run_id, step_id=task.task_id, node="worker")
     usage = WorkerUsage()
     evidence = WorkerEvidence()
     status: str = "failed"
@@ -180,7 +189,17 @@ async def run_worker_task(
     last_ai_text = ""
     log = get_logger(node="worker")
     try:
-        chat_model = model or simple_chat_model("reason")
+        if model is None:
+            chat_model: BaseChatModel = simple_chat_model("reason")
+            provider = "deepseek"
+        else:
+            chat_model = model
+            provider = "injected"
+        model_name = str(
+            getattr(chat_model, "model_name", None)
+            or getattr(chat_model, "model", None)
+            or type(chat_model).__name__
+        )
         impls = {**_default_tool_impls(), **(tool_impls or {})}
         tools = _build_tools(task, impls, bus, usage, evidence)
         agent = create_react_agent(chat_model, tools, prompt=load_worker_prompt())
@@ -203,7 +222,13 @@ async def run_worker_task(
                             if isinstance(message, AIMessage):
                                 iterations += 1
                                 pending_tool_calls = bool(message.tool_calls)
-                                text = await _publish_ai_message(message, bus, usage)
+                                text = await _publish_ai_message(
+                                    message,
+                                    bus,
+                                    usage,
+                                    provider=provider,
+                                    model_name=model_name,
+                                )
                                 if text.strip():
                                     last_ai_text = text.strip()
                     if iterations >= task.budget.max_iterations and pending_tool_calls:
@@ -239,7 +264,7 @@ async def run_worker_task(
         answer = f"worker error: {exc}"
     finally:
         bus.unsubscribe(_collect)
-        unbind_run_context()
+        reset_run_context(context_tokens)
     return WorkerResult(
         task_id=task.task_id,
         status=status,  # type: ignore[arg-type]
