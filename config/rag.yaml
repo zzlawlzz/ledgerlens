@@ -19,7 +19,10 @@ search:
     # ADR-6 amendment (T-018): bge-reranker-v2-m3 not in fastembed 0.8;
     # jina-reranker-v2 is the supported multilingual cross-encoder.
     model: jinaai/jina-reranker-v2-base-multilingual
-  # Relevance floor after rerank -> no_results=true (anti-hallucination).
-  # Placeholder value; calibrated on 5 positive / 5 negative queries in T-019 —
-  # methodology and final value are documented here when T-019 lands.
+  # Relevance floor after rerank (sigmoid of cross-encoder logit) ->
+  # no_results=true (anti-hallucination). Calibrated 2026-07-10 (T-019) on the
+  # 5-ticker demo corpus with jina-reranker-v2-base-multilingual:
+  # 5 on-corpus queries (one per ticker, filtered) best-scores 0.46..0.78;
+  # 5 off-corpus queries (cooking/sport/physics/pets/RU travel) 0.03..0.12.
+  # 0.3 sits in the gap with >1.5x margin on both sides.
   score_threshold: 0.3

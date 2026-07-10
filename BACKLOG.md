@@ -36,9 +36,9 @@
 | T-014 | Chat API v0 (SSE) + запись ранов в БД | 1 | T-013 | M | [done 2026-07-10 e38bfa4] |
 | T-015 | Compose v1, смоук-тест — **гейт G1** | 1 | T-006, T-011, T-014 | S | [done 2026-07-10 e7d6112]⁴ **G1 ✅** |
 | T-016 | Model Router (tiered + fallback + стоимость) | 2. MVP | T-002, T-004 | L | [done 2026-07-10 1c3cc0e]⁵ |
-| T-017 | Локальный инференс (Ollama) в контуре | 2 | T-016 | S | [wip 2026-07-10 26931df]⁶ |
-| T-018 | Qdrant, чанкинг, эмбеддинги в ingestion | 2 | T-002, T-011 | M | [ ] |
-| T-019 | Инструмент rag_search (hybrid + rerank + цитаты) | 2 | T-018 | L | [ ] |
+| T-017 | Локальный инференс (Ollama) в контуре | 2 | T-016 | S | [done 2026-07-10]⁶ |
+| T-018 | Qdrant, чанкинг, эмбеддинги в ingestion | 2 | T-002, T-011 | M | [done 2026-07-10]⁷ |
+| T-019 | Инструмент rag_search (hybrid + rerank + цитаты) | 2 | T-018 | L | [done 2026-07-10]⁸ |
 | T-020 | Оркестратор Plan-and-Execute | 2 | T-013, T-016 | L | [ ] |
 | T-021 | A2A: воркер-сервер и клиент оркестратора | 2 | T-020 | M | [ ] |
 | T-022 | Guardrail non-advice | 2 | T-016, T-020 | S | [ ] |
@@ -64,7 +64,9 @@
 ¹ T-001: репозиторий https://github.com/zzlawlzz/ledgerlens создан 2026-07-10 после gh auth (коммит 86cdbdb — LICENSE holder); Q-14 закрыт.
 ⁴ T-015: **гейт G1 пройден 2026-07-10** — чистый volume → compose up (авто-миграции) → demo-ingest 5 тикеров (67 filings, 2168 facts, 34 sections, 0 ошибок) → smoke 3/3; трейс ReAct в логах контейнера; pluggable-purity grep-тест. SEC-троттлинг обойдён прокси через VPS-FI (`deploy/edgar-proxy.md`).
 ⁵ T-016: live-критерий «route уходит в local-тир» финализируется в T-017 на железе с Ollama; на dev-машине доказан fallback local→cloud (падение локального тира прозрачно уводит в облако).
-⁶ T-017: код и compose готовы; критерий «остановка ollama → fallback в облако» закрыт живым тестом; критерий «route обслуживается локально (provider=ollama)» ждёт докачки образа ollama + модели qwen3.5:4b (Docker Hub медленный) — прогнать `uv run pytest -m slow tests/integration/test_ollama_integration.py` после `docker compose --profile local up`.
+⁶ T-017: все критерии живьём: qwen3.5:4b запуллен идемпотентно; route→ollama (15с на тёплой модели); холодный старт (~3.5 мин CPU-загрузки) превышает 60с-таймаут тира → фолбэк в облако срабатывает штатно; лечение: warmup в ollama_pull.sh + OLLAMA_KEEP_ALIVE=-1. Интеграционный тест зелёный (host-probe скипается: порт ollama наружу не публикуется — проверка через контейнер).
+⁷ T-018: живые критерии: 5 тикеров → 503 чанка, паритет postgres↔qdrant 503=503; повторный ingest идемпотентен (те же счётчики); пин модели работает (смена → ConfigError c подсказкой make reindex). ADR-6 поправлен: bge-m3 не поддержан fastembed 0.8 (вывод T-002 не подтвердился) → multilingual-e5-large + jina-reranker-v2; кэш моделей data/cache/fastembed примонтирован в app. Сетевые обходы: большие файлы HF — через hf-mirror или VPS-прокси (HTTPS_PROXY=http://127.0.0.1:18888), Qdrant/bm25 — только прямой HF.
+⁸ T-019: живые критерии: поиск «supply chain risks» по AAPL — релевантные чанки с цитатами (3 года 10-K); порог 0.3 откалиброван (5 позитивных 0.46–0.78 vs 5 негативных 0.03–0.12, методика в config/rag.yaml); no_results честен (офф-корпус вопрос про Tesla → воркер не выдумал ни факта); сквозной API-прогон: воркер сам вызвал rag_search с фильтрами, ответ с цитатой на каждый пункт; cost_usd в run_finished теперь суммируется из llm_calls (фикс persistence).
 ³ T-011: живой критерий закрыт 2026-07-10 через EDGAR-прокси (SEC троттлил полосу домашнего IP >4 часов — зеркальный риск §5.6 подтверждён и замитигирован по плану: tinyproxy на VPS-FI, `deploy/edgar-proxy.md`).
 ² T-009: отклонение критерия «≥12 из 16 метрик» для JPM — у банков структурно отсутствуют 6 метрик (cost_of_revenue, gross_profit, operating_income, capex, rnd_expense; long_term_debt не под нашими тегами в свежих 10-K); честный максимум 10/16, зафиксирован тестом. AAPL — 16/16, эталонные значения сверены. Словарь §7 расширен тегом CashAndDueFromBanks (банки).
 

@@ -74,8 +74,8 @@ async def finalize_run(
     result: WorkerResult | None,
     error: str | None,
     latency_ms: int,
-) -> None:
-    """Close the run and its step; total cost comes from the llm_calls rows."""
+) -> float:
+    """Close the run and its step; returns the run cost summed from llm_calls."""
     status = "failed"
     answer: str | None = None
     if result is not None:
@@ -88,24 +88,27 @@ async def finalize_run(
         answer = result.answer
     factory = get_session_factory()
     async with factory() as session:
-        await session.execute(
-            text(
-                "UPDATE runs SET status = :status, answer = :answer, error = :error, "
-                "tokens_in = :tokens_in, tokens_out = :tokens_out, "
-                "cost_usd = COALESCE((SELECT SUM(cost_usd) FROM llm_calls "
-                "                     WHERE run_id = :id), 0), "
-                "latency_ms = :latency_ms, finished_at = now() WHERE id = :id"
-            ),
-            {
-                "id": run_id,
-                "status": status,
-                "answer": answer,
-                "error": error,
-                "tokens_in": result.usage.tokens_in if result else 0,
-                "tokens_out": result.usage.tokens_out if result else 0,
-                "latency_ms": latency_ms,
-            },
-        )
+        cost_usd = (
+            await session.execute(
+                text(
+                    "UPDATE runs SET status = :status, answer = :answer, error = :error, "
+                    "tokens_in = :tokens_in, tokens_out = :tokens_out, "
+                    "cost_usd = COALESCE((SELECT SUM(cost_usd) FROM llm_calls "
+                    "                     WHERE run_id = :id), 0), "
+                    "latency_ms = :latency_ms, finished_at = now() WHERE id = :id "
+                    "RETURNING cost_usd"
+                ),
+                {
+                    "id": run_id,
+                    "status": status,
+                    "answer": answer,
+                    "error": error,
+                    "tokens_in": result.usage.tokens_in if result else 0,
+                    "tokens_out": result.usage.tokens_out if result else 0,
+                    "latency_ms": latency_ms,
+                },
+            )
+        ).scalar_one()
         await session.execute(
             text(
                 "UPDATE steps SET status = :status, output = CAST(:output AS jsonb), "
@@ -121,6 +124,7 @@ async def finalize_run(
             },
         )
         await session.commit()
+    return float(cost_usd)
 
 
 def make_db_subscriber() -> Subscriber:

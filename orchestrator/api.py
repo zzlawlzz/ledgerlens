@@ -128,20 +128,25 @@ async def _execute_run(
         get_logger(node="orchestrator").error("run_crashed", error=error)
     finally:
         latency_ms = int((time.perf_counter() - started) * 1000)
+        run_cost_usd = 0.0
         try:
-            await finalize_run(run_id, step_id, result=result, error=error, latency_ms=latency_ms)
+            run_cost_usd = await finalize_run(
+                run_id, step_id, result=result, error=error, latency_ms=latency_ms
+            )
         except Exception as exc:  # noqa: BLE001
             get_logger(node="orchestrator").error("finalize_failed", error=str(exc))
         if error is not None:
             await TRACE_BUS.publish("run_error", {"error": error}, run_id=str(run_id))
         else:
             assert result is not None
+            usage = result.usage.model_dump()
+            usage["cost_usd"] = run_cost_usd  # summed from llm_calls at finalize
             await TRACE_BUS.publish(
                 "run_finished",
                 {
                     "status": result.status,
                     "answer": result.answer,
-                    "usage": result.usage.model_dump(),
+                    "usage": usage,
                     "latency_ms": latency_ms,
                 },
                 run_id=str(run_id),

@@ -8,6 +8,10 @@ services:
       POSTGRES_HOST: postgres
       OLLAMA_BASE_URL: http://ollama:11434
       QDRANT_URL: http://qdrant:6333
+    volumes:
+      # Model cache lives on the project drive; the container must not
+      # re-download ~3.5GB of ONNX models (blocked/slow network from RU).
+      - ./data/cache/fastembed:/app/data/cache/fastembed
     ports:
       - "8000:8000"
     depends_on:
@@ -34,6 +38,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     profiles: ["local"]
+    environment:
+      OLLAMA_KEEP_ALIVE: -1   # never unload: cold CPU load takes minutes (T-017)
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:
