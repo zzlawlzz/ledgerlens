@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 WorkerStatus = Literal["succeeded", "failed", "no_data", "budget_exceeded"]
 
-DEFAULT_ALLOWED_TOOLS = ["sql_query", "schema_introspect"]
+DEFAULT_ALLOWED_TOOLS = ["sql_query", "schema_introspect", "rag_search"]
 
 
 class WorkerBudget(BaseModel):

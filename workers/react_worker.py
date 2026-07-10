@@ -53,7 +53,18 @@ def _default_tool_impls() -> dict[str, ToolImpl]:
     async def _schema_introspect() -> dict[str, Any]:
         return await schema_introspect()
 
-    return {"sql_query": sql_query, "schema_introspect": _schema_introspect}
+    async def _rag_search(
+        query: str, top_k: int = 5, filters: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        from tools.rag.core import rag_search
+
+        return await rag_search(query, top_k, filters)
+
+    return {
+        "sql_query": sql_query,
+        "schema_introspect": _schema_introspect,
+        "rag_search": _rag_search,
+    }
 
 
 def _build_tools(
@@ -83,6 +94,11 @@ def _build_tools(
             evidence.facts.append(
                 {"sql": arguments.get("sql", ""), "row_count": result.get("row_count")}
             )
+        if tool_name == "rag_search" and not is_error and isinstance(result, dict):
+            for chunk in result.get("chunks", []):
+                citation = chunk.get("citation")
+                if citation:
+                    evidence.citations.append(dict(citation))
         return payload
 
     if "sql_query" in task.allowed_tools and "sql_query" in impls:
@@ -116,6 +132,27 @@ def _build_tools(
                 description=(
                     "List tables/columns, the canonical metric dictionary and "
                     "example SQL queries. Call when unsure about the schema."
+                ),
+            )
+        )
+
+    if "rag_search" in task.allowed_tools and "rag_search" in impls:
+
+        async def _rag(query: str, top_k: int = 5, filters: dict[str, Any] | None = None) -> str:
+            """Search narrative filing sections (risk factors, MD&A) with citations."""
+            return await _traced_call(
+                "rag_search", {"query": query, "top_k": top_k, "filters": filters or {}}
+            )
+
+        tools.append(
+            StructuredTool.from_function(
+                coroutine=_rag,
+                name="rag_search",
+                description=(
+                    "Hybrid search over narrative 10-K sections (risk_factors, mdna). "
+                    "Returns text chunks with citations. Optional filters: tickers, "
+                    "form_types, sections, period_from/period_to (ISO dates). "
+                    "If no_results is true, honestly say the data is not loaded."
                 ),
             )
         )
