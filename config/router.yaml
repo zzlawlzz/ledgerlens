@@ -4,7 +4,10 @@ tiers:
   local:
     provider: ollama
     model: "${LOCAL_MODEL}"
-    timeout_s: 60
+    # 25s: a warm small model answers cheap classes in 5-15s; under queue
+    # pressure we'd rather fall back to cloud fast than burn 2x60s per call
+    # (observed on the dev box). Revisit with the T-037 benchmark.
+    timeout_s: 25
   cloud_cheap:
     provider: deepseek
     model: deepseek-v4-flash

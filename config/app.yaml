@@ -10,3 +10,22 @@ adapters:
 watchlist:
   us: [AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA, JPM, JNJ, XOM]
   ru: [SBER, GAZP, LKOH]
+
+# Example questions for the UI (T-024; both locales — Q-04). Kinds cover the
+# demo scenarios: sql, rag, multi-step, self-correction trigger (T-025).
+examples:
+  - kind: sql
+    en: "What was Apple's revenue in fiscal year 2025?"
+    ru: "Какая выручка была у Apple в 2025 финансовом году?"
+  - kind: rag
+    en: "What are the main supply chain risks Apple discloses in its 10-K?"
+    ru: "Какие основные риски цепочки поставок Apple раскрывает в 10-K?"
+  - kind: multi_step
+    en: "Compare the revenue dynamics of Apple and Microsoft over the last 3 fiscal years and name Apple's main risks."
+    ru: "Сравни динамику выручки Apple и Microsoft за 3 года и назови главные риски Apple."
+  - kind: multi_step
+    en: "Which of NVIDIA and AMD grew revenue faster over the last two fiscal years?"
+    ru: "Кто из NVIDIA и AMD быстрее наращивал выручку за последние два финансовых года?"
+  - kind: self_correction
+    en: "What is the average operating margin of Microsoft for the last 3 fiscal years?"
+    ru: "Какая средняя операционная маржа у Microsoft за последние 3 финансовых года?"

@@ -318,6 +318,13 @@ async def agui(body: RunAgentInput) -> StreamingResponse:
     )
 
 
+@app.get("/api/examples")
+async def examples() -> JSONResponse:
+    """Example questions for the UI buttons (T-024), both locales."""
+    app_config = load_yaml_config("app")
+    return JSONResponse({"examples": app_config.get("examples", [])})
+
+
 @app.get("/healthz")
 async def healthz() -> JSONResponse:
     try:

@@ -43,6 +43,7 @@ services:
     profiles: ["local"]
     environment:
       OLLAMA_KEEP_ALIVE: -1   # never unload: cold CPU load takes minutes (T-017)
+      OLLAMA_NUM_PARALLEL: 2  # two concurrent requests before queueing (dev box)
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:
@@ -66,6 +67,21 @@ services:
       - ./scripts/ollama_pull.sh:/ollama_pull.sh:ro
     entrypoint: ["/bin/sh", "/ollama_pull.sh"]
     restart: "no"
+
+  # Web UI (T-024): nginx static + /api,/agui proxy to the app.
+  web:
+    build: ./web
+    ports:
+      - "3000:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
 
   # ReAct worker as a separate A2A service (T-021): the orchestrator talks to
   # it only over the A2A protocol; a second node (T-031) is one more entry in
