@@ -167,9 +167,11 @@ def make_db_subscriber() -> Subscriber:
                 await session.execute(
                     text(
                         "INSERT INTO llm_calls (run_id, step_id, task_class, provider, "
-                        "model, tokens_in, tokens_out, cost_usd) VALUES "
+                        "model, tokens_in, tokens_out, cost_usd, latency_ms, "
+                        "fallback_used, error) VALUES "
                         "(:run_id, :step_id, :task_class, :provider, :model, "
-                        ":tokens_in, :tokens_out, :cost_usd)"
+                        ":tokens_in, :tokens_out, :cost_usd, :latency_ms, "
+                        ":fallback_used, :error)"
                     ),
                     {
                         "run_id": uuid.UUID(event.run_id),
@@ -180,6 +182,9 @@ def make_db_subscriber() -> Subscriber:
                         "tokens_in": tokens_in,
                         "tokens_out": tokens_out,
                         "cost_usd": llm_call_cost(model, tokens_in, tokens_out),
+                        "latency_ms": payload.get("latency_ms"),
+                        "fallback_used": bool(payload.get("fallback_used", False)),
+                        "error": payload.get("error"),
                     },
                 )
                 await session.commit()

@@ -6,8 +6,9 @@ to an asyncio timeout; both overruns end as status ``budget_exceeded`` with
 a partial answer, never as an exception. Every step publishes TraceEvents
 (agent_thought / tool_call_* / llm_call) to the provided TraceBus.
 
-LLM calls go through ``model_router.simple_client`` — a stub with the
-router-shaped interface; the full tiered router replaces it in T-016.
+LLM calls go through the Model Router (T-016): the default model is
+``RouterChatModel('reason')`` — tiered routing with fallback; the router
+publishes ``llm_call`` events itself.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from langgraph.prebuilt import create_react_agent
 from common.agents import WorkerEvidence, WorkerResult, WorkerTask, WorkerUsage
 from common.logging import bind_run_context, get_logger, reset_run_context
 from common.tracing import TraceBus, TraceEvent
-from model_router.simple_client import simple_chat_model
+from model_router.router import RouterChatModel, RouterClient
 from tools.sql.core import schema_introspect, sql_query
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "worker_react.md"
@@ -133,35 +134,18 @@ def _render_task(task: WorkerTask) -> str:
     return "\n".join(parts)
 
 
-async def _publish_ai_message(
-    message: AIMessage,
-    bus: TraceBus,
-    usage: WorkerUsage,
-    *,
-    provider: str,
-    model_name: str,
-) -> str:
-    """Publish thought/llm_call events for one AI message; returns its text."""
+async def _publish_ai_message(message: AIMessage, bus: TraceBus, usage: WorkerUsage) -> str:
+    """Publish the agent thought and accumulate usage; returns the message text.
+
+    ``llm_call`` events are the router's responsibility (T-016) — the worker
+    only mirrors the reasoning into the trace.
+    """
     content = message.content if isinstance(message.content, str) else str(message.content)
     if content.strip():
         await bus.publish("agent_thought", {"text": content.strip()[:THOUGHT_PREVIEW_CHARS]})
-    tokens_in = tokens_out = 0
     if message.usage_metadata:
-        tokens_in = int(message.usage_metadata.get("input_tokens", 0))
-        tokens_out = int(message.usage_metadata.get("output_tokens", 0))
-        usage.tokens_in += tokens_in
-        usage.tokens_out += tokens_out
-    await bus.publish(
-        "llm_call",
-        {
-            "task_class": "reason",
-            "provider": provider,
-            "model": model_name,
-            "tokens_in": tokens_in,
-            "tokens_out": tokens_out,
-            "tool_calls": [call["name"] for call in message.tool_calls],
-        },
-    )
+        usage.tokens_in += int(message.usage_metadata.get("input_tokens", 0))
+        usage.tokens_out += int(message.usage_metadata.get("output_tokens", 0))
     return content
 
 
@@ -189,16 +173,8 @@ async def run_worker_task(
     last_ai_text = ""
     log = get_logger(node="worker")
     try:
-        if model is None:
-            chat_model: BaseChatModel = simple_chat_model("reason")
-            provider = "deepseek"
-        else:
-            chat_model = model
-            provider = "injected"
-        model_name = str(
-            getattr(chat_model, "model_name", None)
-            or getattr(chat_model, "model", None)
-            or type(chat_model).__name__
+        chat_model: BaseChatModel = model or RouterChatModel(
+            task_class="reason", router=RouterClient(trace_bus=bus)
         )
         impls = {**_default_tool_impls(), **(tool_impls or {})}
         tools = _build_tools(task, impls, bus, usage, evidence)
@@ -222,13 +198,7 @@ async def run_worker_task(
                             if isinstance(message, AIMessage):
                                 iterations += 1
                                 pending_tool_calls = bool(message.tool_calls)
-                                text = await _publish_ai_message(
-                                    message,
-                                    bus,
-                                    usage,
-                                    provider=provider,
-                                    model_name=model_name,
-                                )
+                                text = await _publish_ai_message(message, bus, usage)
                                 if text.strip():
                                     last_ai_text = text.strip()
                     if iterations >= task.budget.max_iterations and pending_tool_calls:

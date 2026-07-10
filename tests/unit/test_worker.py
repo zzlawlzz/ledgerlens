@@ -77,7 +77,9 @@ async def test_happy_path_with_tool_call_and_usage() -> None:
     assert result.evidence.facts and result.evidence.facts[0]["row_count"] == 1
     event_names = [event["event"] for event in result.trace]
     assert "tool_call_started" in event_names and "tool_call_finished" in event_names
-    assert "llm_call" in event_names and "agent_thought" in event_names
+    # llm_call events are published by the router (T-016); an injected scripted
+    # model bypasses it, so only the thought is expected here.
+    assert "agent_thought" in event_names
 
 
 async def test_no_data_marker_maps_to_no_data_status() -> None:
