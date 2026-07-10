@@ -42,6 +42,27 @@ def _mask_secrets_processor(
     return masked
 
 
+class _ResilientStdoutLogger:
+    """Writes to the CURRENT ``sys.stdout`` at call time and never raises.
+
+    structlog's PrintLogger captures the stream once — under pytest that stream
+    may already be closed by the time a late error is logged, and the logging
+    call itself would then crash the caller. Logging must never do that.
+    """
+
+    def msg(self, message: str) -> None:
+        try:
+            print(message, file=sys.stdout)
+        except (ValueError, OSError):  # closed/replaced stream — drop the line
+            pass
+
+    log = debug = info = warning = error = critical = exception = fatal = msg
+
+
+def _resilient_logger_factory(*args: object) -> _ResilientStdoutLogger:
+    return _ResilientStdoutLogger()
+
+
 def configure_logging(service: str, *, level: int = logging.INFO) -> None:
     """Configure structlog for JSON output to stdout; idempotent per process."""
 
@@ -65,7 +86,7 @@ def configure_logging(service: str, *, level: int = logging.INFO) -> None:
             structlog.processors.JSONRenderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(level),
-        logger_factory=structlog.PrintLoggerFactory(sys.stdout),
+        logger_factory=_resilient_logger_factory,
         cache_logger_on_first_use=False,
     )
 
