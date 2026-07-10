@@ -124,7 +124,7 @@
 | ADR-3 | Локальная CPU-модель | **Дефолт по T-002 (2026-07-10):** Ollama **qwen3.5:27b** (sparse-MoE, 17 ГБ Q4, 256K ctx), лёгкий fallback qwen3.5:4b. Финал — CPU-бенчмарк T-037 (кандидаты: qwen3.5:27b / qwen3:30b-a3b / qwen3.5:122b) |
 | ADR-4 | Первый источник — **EDGAR (US)**; RU — второй | Зафиксировано |
 | ADR-5 | Стратегии: оркестратор = Plan-and-Execute, воркеры = ReAct | Зафиксировано |
-| ADR-6 | Embedding-модель (единая для док/запросов) | **Решено (T-002, 2026-07-10):** BAAI/bge-m3 (1024d, multilingual, 8192 ток.) через fastembed 0.8/ONNX; sparse BM25 + reranker bge-reranker-v2-m3 — всё поддержано fastembed |
+| ADR-6 | Embedding-модель (единая для док/запросов) | **Решено (T-002), поправлено (T-018, 2026-07-10):** intfloat/multilingual-e5-large (1024d, multilingual; префиксы query/passage через fastembed API) + sparse BM25 + reranker jina-reranker-v2-base-multilingual. Вывод T-002 о поддержке bge-m3/bge-reranker-v2-m3 в fastembed 0.8 не подтвердился живым запуском |
 | ADR-7 | Провайдеры cloud API и их роли в роутинге | **Решено (Q-01) + пины T-002 (2026-07-10):** DeepSeek — cheap=**deepseek-v4-flash** (thinking off), strong/judge=**deepseek-v4-pro**; deepseek-chat/reasoner deprecated 2026-07-24. Облачного fallback нет (резерв — локальная модель). Детали/цены — CONTRACTS §11 |
 | ADR-8 | Провайдер цен (US, опционально) и его free-tier | **Решено (Q-10) + T-002 (2026-07-10):** дефолт **Stooq** (EOD CSV, без ключа; доступность с RU IP проверена живым запросом); альтернатива Alpha Vantage (ключ, лимитный free-tier). Только end-of-day + кэш |
 | ADR-9 | Канал алертов слоя B | **Решено (Q-03):** Telegram |

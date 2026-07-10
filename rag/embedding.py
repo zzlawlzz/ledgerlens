@@ -1,4 +1,4 @@
-"""Chunk embeddings (T-018; ADR-6): bge-m3 dense + BM25 sparse via fastembed.
+"""Chunk embeddings (T-018; ADR-6): multilingual-e5-large dense + BM25 sparse via fastembed.
 
 Models are lazy-loaded ONNX on CPU; weights are cached under
 ``data/cache/fastembed`` (gitignored, lives on the project drive — the system
@@ -49,8 +49,15 @@ class ChunkEmbedder:
         self._log.info("loading_sparse_model", model=self.sparse_model_name)
         return SparseTextEmbedding(self.sparse_model_name, cache_dir=str(FASTEMBED_CACHE_DIR))
 
-    def embed_dense(self, texts: list[str]) -> list[list[float]]:
-        vectors = [vector.tolist() for vector in self._dense.embed(texts)]
+    def embed_dense(self, texts: list[str], *, kind: str = "passage") -> list[list[float]]:
+        """Dense vectors; ``kind`` is "passage" (documents) or "query".
+
+        E5-family models need the query:/passage: prefixes — fastembed applies
+        them inside ``query_embed``/``passage_embed``; models without that
+        distinction fall back to plain ``embed``.
+        """
+        method = getattr(self._dense, f"{kind}_embed", None) or self._dense.embed
+        vectors = [vector.tolist() for vector in method(texts)]
         if vectors and len(vectors[0]) != self.dim:
             raise ValueError(
                 f"dense model {self.dense_model_name} returned dim {len(vectors[0])}, "

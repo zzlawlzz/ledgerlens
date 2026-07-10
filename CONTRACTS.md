@@ -20,9 +20,9 @@
 | AG-UI | `ag-ui-protocol` (python, PyPI) + `@ag-ui/client` на фронте; имена событий подтверждены (§10) ✅T-002 | |
 | БД | PostgreSQL 16 + pgvector; SQLAlchemy 2 (async) + Alembic | |
 | Векторная БД | Qdrant (server, docker) + qdrant-client | ADR-2 |
-| Эмбеддинги | **BAAI/bge-m3** (1024d, multilingual, 8192 ток.) через fastembed **0.8**/ONNX на CPU — актуальность подтверждена ✅T-002 | ADR-6 решён |
+| Эмбеддинги | **intfloat/multilingual-e5-large** (1024d, multilingual; префиксы query/passage через fastembed API) через fastembed **0.8**/ONNX на CPU. ⚠️Поправка T-018: bge-m3 из вывода T-002 в fastembed 0.8 НЕ поддержан (вскрыто живым запуском) | ADR-6 решён (поправлен T-018) |
 | Sparse (hybrid) | fastembed BM25 + server-side fusion (RRF) в Qdrant Query API (`query_points` + `prefetch`) ✅T-002 | |
-| Reranker | bge-reranker-v2-m3 (CPU, ONNX; поддержан fastembed); fallback: ms-marco-MiniLM cross-encoder ✅T-002 | |
+| Reranker | jinaai/jina-reranker-v2-base-multilingual (CPU, ONNX; fastembed 0.8 — поправка T-018: bge-reranker-v2-m3 не поддержан); fallback: ms-marco-MiniLM cross-encoder | |
 | Локальный LLM | Ollama (0.30+); дефолт-кандидат: **qwen3.5:27b** (sparse-MoE, 17 ГБ Q4, 256K ctx — сменил qwen3:30b-a3b по T-002); лёгкий fallback **qwen3.5:4b**; финал — CPU-бенчмарк T-037 (кандидаты: qwen3.5:27b / qwen3:30b-a3b / qwen3.5:122b — 81 ГБ, в 128 ГБ RAM влезает) | ADR-3 дефолт |
 | Cloud LLM | **DeepSeek** (Q-01), пины T-002 (2026-07-10): cheap = **deepseek-v4-flash** (thinking disabled), strong/judge = **deepseek-v4-pro** (thinking enabled). ⚠️ Старые имена deepseek-chat/deepseek-reasoner **deprecated 2026-07-24** — не использовать. Облачного fallback между провайдерами нет — резерв только локальная модель (риск Q-01) | ADR-7 решён |
 | HTTP-клиент | httpx + tenacity (ретраи) | |

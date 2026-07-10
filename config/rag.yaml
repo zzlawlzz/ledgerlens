@@ -4,7 +4,10 @@ chunking:
   overlap_tokens: 150
 
 embedding:
-  model: BAAI/bge-m3          # ADR-6 (closed by T-002): dense 1024d, multilingual
+  # ADR-6 amendment (T-018): bge-m3 is not in fastembed 0.8 — the closest
+  # supported multilingual 1024d dense model is multilingual-e5-large
+  # (query:/passage: prefixes are applied by fastembed's query/passage APIs).
+  model: intfloat/multilingual-e5-large
   dim: 1024
   sparse_model: Qdrant/bm25   # fastembed sparse model for hybrid search
 
@@ -13,7 +16,9 @@ search:
   prefetch_limit: 20          # per-vector candidates before fusion (RRF)
   rerank:
     enabled: true
-    model: BAAI/bge-reranker-v2-m3
+    # ADR-6 amendment (T-018): bge-reranker-v2-m3 not in fastembed 0.8;
+    # jina-reranker-v2 is the supported multilingual cross-encoder.
+    model: jinaai/jina-reranker-v2-base-multilingual
   # Relevance floor after rerank -> no_results=true (anti-hallucination).
   # Placeholder value; calibrated on 5 positive / 5 negative queries in T-019 —
   # methodology and final value are documented here when T-019 lands.

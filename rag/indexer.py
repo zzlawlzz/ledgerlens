@@ -1,6 +1,6 @@
 """Qdrant collection management and chunk indexing (T-018; ADR-2).
 
-Collection ``narrative_chunks``: named dense vector (bge-m3, cosine) + named
+Collection ``narrative_chunks``: named dense vector (e5-large, cosine) + named
 sparse vector (BM25). Point ids are deterministic (uuid5 of
 ``section_id:chunk_index``) so re-indexing is idempotent. The embedding model
 name is pinned in a dedicated meta point — a model change without reindexing

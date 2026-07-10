@@ -76,3 +76,17 @@
 - IMPLEMENTATION_PLAN §3 — ADR-3 (дефолт qwen3.5:27b, финал T-037), ADR-6 (закрыт: bge-m3), ADR-7 (пины V4), ADR-8 (закрыт: Stooq).
 - `pyproject.toml`/`uv.lock` — 17 runtime-зависимостей запинены; `import langgraph, mcp` и весь стек импортируются.
 - `.env.example` — `LOCAL_MODEL=qwen3.5:27b`.
+
+## Поправка ADR-6 (T-018, 2026-07-10, живая проверка)
+
+Вывод исследования T-002 о поддержке bge-m3 в fastembed **не подтвердился**:
+`TextEmbedding('BAAI/bge-m3')` в fastembed 0.8.0 бросает `ValueError: Model ... is not
+supported` (проверено запуском на этой машине); `BAAI/bge-reranker-v2-m3` отсутствует в
+`TextCrossEncoder.list_supported_models()`. Урок: перечень моделей проверять только через
+`list_supported_models()` установленной версии, не по статьям/README.
+
+Замена (те же требования: multilingual для RU-режима, dense 1024d, ONNX/CPU):
+- dense: **intfloat/multilingual-e5-large** (1024d, 2.2 ГБ; префиксы query:/passage: —
+  через `query_embed`/`passage_embed` fastembed);
+- reranker: **jinaai/jina-reranker-v2-base-multilingual** (1.1 ГБ);
+- sparse: Qdrant/bm25 (без изменений).

@@ -123,7 +123,7 @@ async def rag_search(
 
     embedder = embedder or ChunkEmbedder()
     indexer = indexer or NarrativeIndexer(embedder=embedder)
-    dense_query = embedder.embed_dense([query])[0]
+    dense_query = embedder.embed_dense([query], kind="query")[0]
     sparse_query = embedder.embed_sparse([query])[0]
     query_filter = _build_filter(filters)
 
