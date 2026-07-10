@@ -41,6 +41,20 @@ class FakeEdgarClient(EdgarClient):
         assert isinstance(data, dict)
         return data
 
+    async def get_archive_document(self, cik: int | str, accession: str, filename: str) -> bytes:
+        body = "<p>Competition may harm our business. </p>" * 200
+        results = "<p>Revenue increased due to strong demand. </p>" * 200
+        return (
+            "<html><body>"
+            "<p>Item 1A. Risk Factors</p>"
+            f"{body}"
+            "<p>Item 1B. Unresolved Staff Comments</p>"
+            "<p>Item 7. Management's Discussion and Analysis</p>"
+            f"{results}"
+            "<p>Item 8. Financial Statements</p>"
+            "</body></html>"
+        ).encode()
+
 
 @pytest.fixture
 def adapter() -> EdgarAdapter:
@@ -91,10 +105,26 @@ async def test_extract_facts_limits_to_known_filings(adapter: EdgarAdapter) -> N
     assert {fact.source_filing_id for fact in facts} <= known
 
 
-async def test_sections_and_events_fail_loudly_until_implemented(
-    adapter: EdgarAdapter,
-) -> None:
+async def test_extract_sections_returns_filing_sections(adapter: EdgarAdapter) -> None:
     company = Company(source="edgar", external_id="0000320193", name="Apple Inc.")
-    filings = await adapter.fetch_filings(company, years=1)
-    with pytest.raises(ToolError, match="T-010"):
-        await adapter.extract_sections(company, filings[0])
+    filings = await adapter.fetch_filings(company, years=2)
+    annual = next(f for f in filings if f.form_type == "10-K")
+    sections = await adapter.extract_sections(company, annual)
+    assert {s.section for s in sections} == {"risk_factors", "mdna"}
+    assert all(s.source_filing_id == annual.source_filing_id for s in sections)
+    assert all(s.title for s in sections)
+
+
+async def test_extract_sections_skips_quarterly_filings(adapter: EdgarAdapter) -> None:
+    company = Company(source="edgar", external_id="0000320193", name="Apple Inc.")
+    filings = await adapter.fetch_filings(company, years=2)
+    quarterly = next(f for f in filings if f.form_type == "10-Q")
+    assert await adapter.extract_sections(company, quarterly) == []
+
+
+async def test_poll_events_fails_loudly_until_t035(adapter: EdgarAdapter) -> None:
+    from datetime import UTC, datetime
+
+    company = Company(source="edgar", external_id="0000320193", name="Apple Inc.")
+    with pytest.raises(ToolError, match="T-035"):
+        await adapter.poll_events([company], datetime(2026, 1, 1, tzinfo=UTC))

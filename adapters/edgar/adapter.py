@@ -1,8 +1,7 @@
-"""EDGAR data source adapter (T-009: entities, filings, facts).
+"""EDGAR data source adapter (T-009 facts, T-010 narrative sections).
 
-Narrative sections land in T-010; event polling — with monitoring layer
-(T-035). Until then those methods raise a non-retryable ToolError so callers
-fail loudly instead of silently getting nothing.
+Event polling arrives with monitoring layer B (T-035); until then the method
+raises a non-retryable ToolError so callers fail loudly.
 """
 
 from __future__ import annotations
@@ -12,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from adapters.base import DataSourceAdapter, register_adapter
 from adapters.edgar.client import EdgarClient
 from adapters.edgar.facts import extract_financial_facts
+from adapters.edgar.sections import extract_sections_from_html, section_title
 from common.errors import ToolError
 from common.logging import get_logger
 from common.models import Company, Event, Filing, FilingSection, FinancialFact
@@ -31,8 +31,12 @@ def _parse_filing_date(raw: str) -> datetime | None:
 class EdgarAdapter(DataSourceAdapter):
     source = "edgar"
 
-    def __init__(self, client: EdgarClient | None = None) -> None:
+    def __init__(
+        self, client: EdgarClient | None = None, *, include_business_section: bool = False
+    ) -> None:
         self._client = client or EdgarClient()
+        # Optional Item 1 (Business) extraction — off by default (T-010 §6).
+        self._include_business_section = include_business_section
 
     async def list_entities(self, tickers: list[str] | None = None) -> list[Company]:
         data = await self._client.get_company_tickers()
@@ -109,9 +113,35 @@ class EdgarAdapter(DataSourceAdapter):
         return facts
 
     async def extract_sections(self, company: Company, filing: Filing) -> list[FilingSection]:
-        raise ToolError(
-            "EDGAR narrative section extraction is implemented in T-010", retryable=False
+        if filing.form_type != "10-K":
+            return []  # narrative comes from annual reports only (v1)
+        primary_document = filing.meta.get("primary_document")
+        if not primary_document:
+            raise ToolError(
+                f"filing {filing.source_filing_id} has no primary_document in meta",
+                retryable=False,
+            )
+        html = await self._client.get_archive_document(
+            int(company.external_id), filing.source_filing_id, str(primary_document)
         )
+        result = extract_sections_from_html(html, include_business=self._include_business_section)
+        log = get_logger(node="edgar_adapter")
+        for warning in result.warnings:
+            log.warning(
+                "section_extraction_warning",
+                ticker=company.ticker,
+                filing=filing.source_filing_id,
+                detail=warning,
+            )
+        return [
+            FilingSection(
+                source_filing_id=filing.source_filing_id,
+                section=name,
+                title=section_title(name),
+                text=text,
+            )
+            for name, text in result.sections.items()
+        ]
 
     async def poll_events(self, watchlist: list[Company], since: datetime) -> list[Event]:
         raise ToolError(

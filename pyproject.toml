@@ -10,12 +10,14 @@ dependencies = [
     "ag-ui-protocol>=0.1.19",
     "alembic>=1.18.5",
     "asyncpg>=0.31.0",
+    "beautifulsoup4>=4.15.0",
     "fastapi>=0.139.0",
     "fastembed>=0.8.0",
     "httpx>=0.28.1",
     "langchain-mcp-adapters>=0.3.0",
     "langgraph>=1.2.8",
     "langgraph-checkpoint-postgres>=3.1.0",
+    "lxml>=6.1.1",
     "mcp>=1.28.1",
     "pydantic-settings>=2.14.2",
     "pyyaml>=6.0.3",
@@ -31,12 +33,14 @@ dependencies = [
 # Floors here; exact versions are locked in uv.lock (T-002, 2026-07-10).
 # Do not bump majors without a dedicated backlog task (CONTRACTS.md §1).
 dev = [
+    "lxml-stubs>=0.5.1",
     "mypy>=1.14",
     "pre-commit>=4.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "respx>=0.22",
     "ruff>=0.9",
+    "types-beautifulsoup4>=4.12.0.20250516",
     "types-pyyaml>=6.0.12.20260518",
 ]
 
