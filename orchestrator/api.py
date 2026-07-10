@@ -49,9 +49,44 @@ def ensure_stream_infrastructure() -> None:
     _infrastructure_ready = True
 
 
+async def _warm_up_local_llm() -> None:
+    """T-017: probe the local tier once at startup; slow answers get a warning.
+
+    The router falls back to cloud by timeout anyway — this is an SLA signal
+    for the operator, not a gate.
+    """
+    settings = get_settings()
+    log = get_logger(node="orchestrator")
+    if not settings.has_local_llm():
+        log.info("local_llm_disabled", reason="no OLLAMA_BASE_URL/LOCAL_MODEL (no-local mode)")
+        return
+    from langchain_openai import ChatOpenAI
+
+    model = ChatOpenAI(
+        model=settings.local_model,
+        api_key="ollama",  # type: ignore[arg-type]
+        base_url=f"{settings.ollama_base_url.rstrip('/')}/v1",
+        timeout=120,
+        temperature=0.0,
+    )
+    started = time.perf_counter()
+    try:
+        await model.ainvoke([("user", "Reply with exactly: OK")])
+    except Exception as exc:  # noqa: BLE001 — warm-up must never break startup
+        log.warning("local_llm_unreachable", model=settings.local_model, error=str(exc)[:200])
+        return
+    elapsed_s = round(time.perf_counter() - started, 1)
+    log.info("local_llm_warmup_done", model=settings.local_model, seconds=elapsed_s)
+    if elapsed_s > 10:
+        log.warning(
+            "local_llm_slow", seconds=elapsed_s, sla_hint="short classify should take <=10s"
+        )
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     ensure_stream_infrastructure()
+    asyncio.create_task(_warm_up_local_llm())
     yield
 
 

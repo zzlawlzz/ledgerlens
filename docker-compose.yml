@@ -6,6 +6,7 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
+      OLLAMA_BASE_URL: http://ollama:11434
     ports:
       - "8000:8000"
     depends_on:
@@ -26,6 +27,36 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # Local CPU inference (T-017). Profile "local": `docker compose --profile local up`.
+  # Machines without resources run the no-local mode: plain `docker compose up`
+  # + empty LOCAL_MODEL in .env (the router drops the local tier with a warning).
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local"]
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: ["local"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LOCAL_MODEL: ${LOCAL_MODEL:-qwen3.5:27b}
+    volumes:
+      - ./scripts/ollama_pull.sh:/ollama_pull.sh:ro
+    entrypoint: ["/bin/sh", "/ollama_pull.sh"]
+    restart: "no"
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:
@@ -45,3 +76,4 @@ services:
 
 volumes:
   pgdata:
+  ollama-models:

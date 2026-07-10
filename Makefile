@@ -22,11 +22,14 @@ db-reset:  ## Destroy volumes and re-create the schema from scratch
 	docker compose down -v
 	$(MAKE) db-up db-migrate
 
-up:  ## Start the full stack
+up:  ## Start the full stack incl. local LLM (profile "local")
+	docker compose --profile local up -d --wait
+
+up-no-local:  ## Start without the local LLM (set LOCAL_MODEL= empty in .env)
 	docker compose up -d --wait
 
 down:  ## Stop the full stack
-	docker compose down
+	docker compose --profile local down
 
 TICKERS ?= AAPL,MSFT,NVDA
 YEARS ?= 3
