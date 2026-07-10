@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:   # enables the manual smoke job below
 
 jobs:
   lint:
@@ -63,5 +64,24 @@ jobs:
       POSTGRES_PASSWORD: ci-password
     steps:
       - uses: actions/checkout@v4
-      # App images appear in T-015; until then validate compose config.
       - run: docker compose config --quiet
+      - run: docker build -t ledgerlens-app .
+
+  # Manual (workflow_dispatch): live smoke against real EDGAR + DeepSeek.
+  smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Prepare env
+        run: |
+          cp .env.example .env
+          sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-password/" .env
+          sed -i "s/^POSTGRES_RO_PASSWORD=.*/POSTGRES_RO_PASSWORD=ci-ro-password/" .env
+          sed -i "s/^DEEPSEEK_API_KEY=.*/DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}/" .env
+      - run: docker compose up -d --wait
+      - run: uv run python scripts/smoke_test.py --auto-ingest

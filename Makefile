@@ -1,5 +1,5 @@
 # LedgerLens — task automation. TODO-stubs are implemented by their backlog tasks.
-.PHONY: up down lint test test-integration ingest demo seed eval smoke db-up db-migrate db-reset
+.PHONY: up down lint test test-integration ingest demo-ingest demo seed eval smoke db-up db-migrate db-reset
 
 lint:  ## Static checks: format, lint, types
 	uv run ruff format --check .
@@ -23,10 +23,10 @@ db-reset:  ## Destroy volumes and re-create the schema from scratch
 	$(MAKE) db-up db-migrate
 
 up:  ## Start the full stack
-	@echo "TODO(T-015): docker compose up"
+	docker compose up -d --wait
 
 down:  ## Stop the full stack
-	@echo "TODO(T-015): docker compose down"
+	docker compose down
 
 TICKERS ?= AAPL,MSFT,NVDA
 YEARS ?= 3
@@ -43,5 +43,9 @@ seed:  ## Restore demo data snapshot without hitting EDGAR
 eval:  ## Run eval harness against a running stack
 	@echo "TODO(T-029): eval harness"
 
-smoke:  ## compose up + ingest + smoke_test.py
-	@echo "TODO(T-015): smoke test"
+demo-ingest:  ## Ingest the demo set (live EDGAR with disk cache)
+	uv run python -m ingestion.run --source edgar --tickers AAPL,MSFT,NVDA,GOOGL,AMZN --years 3
+
+smoke:  ## compose up + ingest when empty + smoke_test.py (gate G1)
+	docker compose up -d --wait
+	uv run python scripts/smoke_test.py --auto-ingest

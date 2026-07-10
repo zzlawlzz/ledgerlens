@@ -18,9 +18,24 @@ Self-hostable мультиагентная платформа финансово
 | [BACKLOG.md](BACKLOG.md) | Бэклог разработчика: задачи T-001…T-040 по приоритету, с ТЗ и критериями выполнения |
 | [OWNER_QUESTIONS.md](OWNER_QUESTIONS.md) | Вопросы владельцу проекта (решения, блокирующие отдельные задачи) |
 
-## Быстрый старт
+## Быстрый старт (фаза 1: вопрос → ответ на данных EDGAR)
 
-Появится по завершении фазы 1 (задача T-015): `cp .env.example .env && docker compose up` → рабочая система с демо-данными SEC EDGAR.
+```bash
+cp .env.example .env        # заполнить DEEPSEEK_API_KEY, POSTGRES_PASSWORD, POSTGRES_RO_PASSWORD
+docker compose up -d --wait # postgres + app (миграции применяются на старте)
+make demo-ingest            # загрузка 5 тикеров × 3 года из SEC EDGAR (кэшируется)
+make smoke                  # 3 канонических вопроса через /api/chat
+```
+
+Разовый вопрос вручную:
+
+```bash
+curl -N -X POST http://localhost:8000/api/chat \
+     -H "Content-Type: application/json" \
+     -d '{"question": "What was the revenue of AAPL in its latest fiscal year?"}'
+```
+
+Ответ стримится как SSE-поток трейс-событий (план, вызовы инструментов, мысли агента) и завершается `run_finished` с ответом.
 
 ## Источники данных и лицензии
 
