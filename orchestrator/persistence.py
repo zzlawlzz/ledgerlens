@@ -15,7 +15,6 @@ from typing import Any
 
 from sqlalchemy import text
 
-from common.agents import WorkerResult
 from common.config import load_yaml_config
 from common.db import get_session_factory
 from common.logging import get_logger
@@ -44,9 +43,9 @@ def llm_call_cost(model: str, tokens_in: int, tokens_out: int) -> Decimal | None
     return Decimal(str(round(cost, 6)))
 
 
-async def create_run(question: str, mode: str) -> tuple[uuid.UUID, uuid.UUID]:
-    """Insert runs + the single v0 step; returns (run_id, step_id)."""
-    run_id, step_id = uuid.uuid4(), uuid.uuid4()
+async def create_run(question: str, mode: str) -> uuid.UUID:
+    """Insert the runs row; plan steps add their own rows via insert_step."""
+    run_id = uuid.uuid4()
     factory = get_session_factory()
     async with factory() as session:
         await session.execute(
@@ -56,59 +55,35 @@ async def create_run(question: str, mode: str) -> tuple[uuid.UUID, uuid.UUID]:
             ),
             {"id": run_id, "question": question, "mode": mode},
         )
+        await session.commit()
+    return run_id
+
+
+async def insert_step(run_id: uuid.UUID, *, node: str, goal: str) -> uuid.UUID:
+    """One executed plan step = one steps row (T-020)."""
+    step_id = uuid.uuid4()
+    factory = get_session_factory()
+    async with factory() as session:
         await session.execute(
             text(
                 "INSERT INTO steps (id, run_id, node, status, goal) "
-                "VALUES (:id, :run_id, 'worker', 'running', :goal)"
+                "VALUES (:id, :run_id, :node, 'running', :goal)"
             ),
-            {"id": step_id, "run_id": run_id, "goal": question},
+            {"id": step_id, "run_id": run_id, "node": node, "goal": goal},
         )
         await session.commit()
-    return run_id, step_id
+    return step_id
 
 
-async def finalize_run(
-    run_id: uuid.UUID,
+async def finish_step(
     step_id: uuid.UUID,
     *,
-    result: WorkerResult | None,
+    status: str,
+    output: dict[str, Any],
     error: str | None,
-    latency_ms: int,
-) -> float:
-    """Close the run and its step; returns the run cost summed from llm_calls."""
-    status = "failed"
-    answer: str | None = None
-    if result is not None:
-        status = {
-            "succeeded": "succeeded",
-            "no_data": "succeeded",  # honest "no data" is a successful analysis
-            "budget_exceeded": "budget_exceeded",
-            "failed": "failed",
-        }[result.status]
-        answer = result.answer
+) -> None:
     factory = get_session_factory()
     async with factory() as session:
-        cost_usd = (
-            await session.execute(
-                text(
-                    "UPDATE runs SET status = :status, answer = :answer, error = :error, "
-                    "tokens_in = :tokens_in, tokens_out = :tokens_out, "
-                    "cost_usd = COALESCE((SELECT SUM(cost_usd) FROM llm_calls "
-                    "                     WHERE run_id = :id), 0), "
-                    "latency_ms = :latency_ms, finished_at = now() WHERE id = :id "
-                    "RETURNING cost_usd"
-                ),
-                {
-                    "id": run_id,
-                    "status": status,
-                    "answer": answer,
-                    "error": error,
-                    "tokens_in": result.usage.tokens_in if result else 0,
-                    "tokens_out": result.usage.tokens_out if result else 0,
-                    "latency_ms": latency_ms,
-                },
-            )
-        ).scalar_one()
         await session.execute(
             text(
                 "UPDATE steps SET status = :status, output = CAST(:output AS jsonb), "
@@ -116,15 +91,64 @@ async def finalize_run(
             ),
             {
                 "id": step_id,
-                "status": result.status if result else "failed",
-                "output": json.dumps(
-                    {"answer": answer, "usage": result.usage.model_dump()} if result else {}
-                ),
+                "status": status,
+                "output": json.dumps(output, ensure_ascii=False, default=str),
                 "error": error,
             },
         )
         await session.commit()
-    return float(cost_usd)
+
+
+async def finalize_run(
+    run_id: uuid.UUID,
+    *,
+    status: str,
+    answer: str | None,
+    error: str | None,
+    latency_ms: int,
+) -> dict[str, Any]:
+    """Close the run; usage is aggregated from llm_calls (the source of truth).
+
+    Any step still 'running' (crash mid-plan) is closed as failed so the run
+    never leaves dangling rows.
+    """
+    factory = get_session_factory()
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "UPDATE runs SET status = :status, answer = :answer, error = :error, "
+                    "tokens_in = COALESCE((SELECT SUM(tokens_in) FROM llm_calls "
+                    "                      WHERE run_id = :id), 0), "
+                    "tokens_out = COALESCE((SELECT SUM(tokens_out) FROM llm_calls "
+                    "                       WHERE run_id = :id), 0), "
+                    "cost_usd = COALESCE((SELECT SUM(cost_usd) FROM llm_calls "
+                    "                     WHERE run_id = :id), 0), "
+                    "latency_ms = :latency_ms, finished_at = now() WHERE id = :id "
+                    "RETURNING cost_usd, tokens_in, tokens_out"
+                ),
+                {
+                    "id": run_id,
+                    "status": status,
+                    "answer": answer,
+                    "error": error,
+                    "latency_ms": latency_ms,
+                },
+            )
+        ).one()
+        await session.execute(
+            text(
+                "UPDATE steps SET status = 'failed', error = 'run finalized while running', "
+                "finished_at = now() WHERE run_id = :id AND status = 'running'"
+            ),
+            {"id": run_id},
+        )
+        await session.commit()
+    return {
+        "cost_usd": float(row[0]),
+        "tokens_in": int(row[1]),
+        "tokens_out": int(row[2]),
+    }
 
 
 def make_db_subscriber() -> Subscriber:

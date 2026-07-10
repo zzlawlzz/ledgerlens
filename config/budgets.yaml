@@ -7,7 +7,9 @@ profiles:
     worker_max_iterations: 8
     max_cost_usd_per_run: 0.50
     max_tokens_per_run: 200000
-    wall_clock_s_per_run: 300
+    # 600 on the dev box: local-tier classify/extract on a laptop CPU eat
+    # ~15-60s per call; the demo profile (home node, 2xEPYC) stays tight.
+    wall_clock_s_per_run: 600
     runs_per_hour_per_ip: null   # unlimited in dev
   demo:
     max_plan_steps: 6
