@@ -28,8 +28,11 @@ up:  ## Start the full stack
 down:  ## Stop the full stack
 	@echo "TODO(T-015): docker compose down"
 
-ingest:  ## Ingest source data (TICKERS=..., YEARS=3)
-	@echo "TODO(T-011): ingestion CLI"
+TICKERS ?= AAPL,MSFT,NVDA
+YEARS ?= 3
+
+ingest:  ## Ingest source data (TICKERS=..., YEARS=...)
+	uv run python -m ingestion.run --source edgar --tickers $(TICKERS) --years $(YEARS)
 
 demo:  ## up + seed on empty DB + open UI
 	@echo "TODO(T-026): demo"

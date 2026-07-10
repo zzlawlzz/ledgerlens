@@ -122,7 +122,7 @@ class EdgarClient:
         min_interval_s: float = 0.1,
         retry_attempts: int = 3,
         retry_wait_base_s: float = 0.5,
-        timeout_s: float = 30.0,
+        timeout_s: float = 60.0,  # Archives 10-Ks reach ~12MB — generous read timeout
         direct_transport: httpx.AsyncBaseTransport | None = None,
         sec_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -133,7 +133,7 @@ class EdgarClient:
                 "(fair-use policy; CONTRACTS.md §5, Q-11)"
             )
         headers = {"User-Agent": settings.edgar_user_agent}
-        timeout = httpx.Timeout(timeout_s)
+        timeout = httpx.Timeout(timeout_s, connect=10.0)
         self._proxy_url = settings.edgar_proxy_url or None
         self._direct = httpx.AsyncClient(
             headers=headers, timeout=timeout, transport=direct_transport
