@@ -129,10 +129,23 @@ async def test_chat_streams_events_and_persists_consistent_rows() -> None:
         ).one()
         step_count = (
             await session.execute(
-                text("SELECT count(*) FROM steps WHERE run_id = :id AND status = 'succeeded'"),
+                text(
+                    "SELECT count(*) FROM steps WHERE run_id = :id "
+                    "AND node = 'worker' AND status = 'succeeded'"
+                ),
                 {"id": uuid.UUID(run_id)},
             )
         ).scalar_one()
+        guardrail_rows = (
+            (
+                await session.execute(
+                    text("SELECT output FROM steps WHERE run_id = :id AND node = 'guardrail'"),
+                    {"id": uuid.UUID(run_id)},
+                )
+            )
+            .scalars()
+            .all()
+        )
         llm_rows = (
             await session.execute(
                 text(
@@ -154,6 +167,8 @@ async def test_chat_streams_events_and_persists_consistent_rows() -> None:
     assert run.tokens_in > 0 and run.tokens_out > 0
     assert float(run.cost_usd) > 0  # priced from config/prices.yaml
     assert step_count == 1
+    assert len(guardrail_rows) == 1  # guardrail decision persisted (T-022)
+    assert "action" in json.dumps(guardrail_rows[0], default=str)
     assert llm_rows[0] >= 1 and float(llm_rows[1]) == float(run.cost_usd)
     assert tool_rows >= 1
 

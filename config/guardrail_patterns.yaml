@@ -1,0 +1,23 @@
+# Non-advice guardrail regex patterns (T-022; CONTRACTS §12), RU + EN.
+# Stage (a) of the two-stage check: cheap, deterministic, case-insensitive.
+# Patterns aim at ADVICE (imperatives/recommendations), not at analytical
+# mentions of the words — "выручка выросла" or "the company sells devices"
+# must NOT trigger. Tuned against the test suite in tests/unit/test_guardrail.py.
+patterns:
+  # --- RU: buy/sell/hold imperatives and recommendations ---
+  - '(?i)\b(вам|тебе)?\s*(стоит|следует|рекоменду(ю|ем|ется))\s+(купить|покупать|продать|продавать|держать|докупить|шортить)'
+  - '(?i)\b(купите|покупайте|продайте|продавайте|держите|докупите|шортите)\b'
+  - '(?i)\bсовету(ю|ем)\s+(купить|покупать|продать|продавать|держать)'
+  - '(?i)\b(лучше|пора|время)\s+(купить|покупать|продать|продавать|зафиксировать\s+прибыль)'
+  - '(?i)\bстоит\s+(войти|инвестировать|вложить(ся)?|добавить\s+в\s+портфель)'
+  - '(?i)\b(целевая\s+цена|таргет)\b'
+  - '(?i)\bдержать\s+до\s+(цели|таргета|\d)'
+  - '(?i)\b(выделите|выделить|разместите)\s+\d+\s*%\s+(портфеля|капитала)'
+  # --- EN: buy/sell/hold imperatives and recommendations ---
+  - '(?i)\b(you\s+should|i\s+(would\s+)?recommend(\s+to)?|it\s+is\s+advisable\s+to)\s+(buy|sell|hold|short|accumulate)'
+  - '(?i)\b(buy|sell|hold|short)\s+(the\s+)?(stock|shares?|it)\b'
+  - '(?i)\b(strong\s+)?(buy|sell|hold)\s+rating\b'
+  - '(?i)\bprice\s+target\b'
+  - '(?i)\b(good|great|right)\s+time\s+to\s+(buy|sell|enter|exit)'
+  - '(?i)\ballocate\s+\d+\s*%\s+of\s+(your\s+)?(portfolio|capital)'
+  - '(?i)\b(go\s+long|go\s+short)\b'

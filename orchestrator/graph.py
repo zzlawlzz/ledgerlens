@@ -49,6 +49,7 @@ Skill = Literal["financial_sql_analysis", "narrative_rag_analysis"]
 CONTRADICTION_TOLERANCE = 0.02
 RESULT_SUMMARY_CHARS = 400
 DIALOGUE_CONTEXT_TURNS = 2
+MAX_GUARDRAIL_SPANS = 8
 
 
 def _load_prompt(name: str) -> str:
@@ -421,13 +422,19 @@ class Orchestrator:
             "partial_reason": "",
         }
 
-    async def _synthesize(self, state: OrchestratorState) -> OrchestratorState:
+    def _results_digest(self, state: OrchestratorState, *, per_step_chars: int = 3000) -> str:
         steps = _plan_steps(state)
-        digest = "\n\n".join(
+        return "\n\n".join(
             f"## Step {s.id} [{s.status}]: {s.goal}\n"
-            + str(state.get("results", {}).get(s.id, {}).get("answer", s.result_summary))[:3000]
+            + str(state.get("results", {}).get(s.id, {}).get("answer", s.result_summary))[
+                :per_step_chars
+            ]
             for s in steps
         )
+
+    async def _synthesize(self, state: OrchestratorState) -> OrchestratorState:
+        steps = _plan_steps(state)
+        digest = self._results_digest(state)
         partial = bool(state.get("partial")) or any(
             s.status in ("failed", "no_data", "pending") for s in steps
         )
@@ -452,7 +459,73 @@ class Orchestrator:
         return {"answer": response.text, "partial": partial}
 
     async def _guardrail(self, state: OrchestratorState) -> OrchestratorState:
-        return {}  # T-022 adds the non-advice check here
+        """Non-advice guardrail (T-022; CONTRACTS §12): check -> one
+        re-synthesis -> template refusal; disclaimer on every answer."""
+        from orchestrator.guardrail import (
+            build_refusal,
+            check_advice,
+            disclaimer_for,
+            find_advice_spans,
+        )
+
+        question = state["question"]
+        answer = state.get("answer", "")
+        action = "pass"
+        verdict = await check_advice(answer, self._router) if answer else None
+        if verdict and verdict.advice:
+            action = "resynthesize"
+            self._log.warning("guardrail_triggered", spans=verdict.spans[:3])
+            response = await self._router.chat(
+                "synthesize",
+                [
+                    ("system", _load_prompt("orchestrator_synthesize")),
+                    (
+                        "user",
+                        f"Question: {question}\n\nStep results:\n"
+                        f"{self._results_digest(state, per_step_chars=1500)}\n"
+                        "Your previous draft contained INVESTMENT ADVICE, which is "
+                        f"forbidden. Offending fragments: {verdict.spans}. Rewrite the "
+                        "answer with facts, calculations and comparisons only — no "
+                        "recommendations to buy/sell/hold, no price targets, no "
+                        "allocation suggestions.",
+                    ),
+                ],
+            )
+            answer = response.text
+            # Second pass is regex-only: deterministic and free; a stubborn
+            # draft gets the template refusal built from collected facts.
+            if find_advice_spans(answer):
+                action = "refuse"
+                facts = "\n".join(
+                    f"- {key}: {kv.get('value')} {kv.get('unit', '')} ({kv.get('period', '')})"
+                    for key, kv in state.get("key_values", {}).items()
+                    if not key.startswith("__first__")
+                )
+                answer = build_refusal(question, facts)
+        answer = f"{answer}\n\n_{disclaimer_for(question)}_" if answer else answer
+        await self._publish(
+            "guardrail",
+            {
+                "triggered": bool(verdict and verdict.advice),
+                "action": action,
+                "spans": (verdict.spans if verdict else [])[:5],
+            },
+        )
+        if self._track_db_steps:
+            step_db_id = await insert_step(
+                uuid.UUID(state["run_id"]), node="guardrail", goal="non-advice check"
+            )
+            await finish_step(
+                step_db_id,
+                status="succeeded",
+                output={
+                    "triggered": bool(verdict and verdict.advice),
+                    "action": action,
+                    "spans": (verdict.spans if verdict else [])[:MAX_GUARDRAIL_SPANS],
+                },
+                error=None,
+            )
+        return {"answer": answer}
 
     async def _finalize(self, state: OrchestratorState) -> OrchestratorState:
         return {"dialogue": [{"question": state["question"], "answer": state.get("answer", "")}]}

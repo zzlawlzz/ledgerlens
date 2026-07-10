@@ -117,6 +117,7 @@ async def test_simple_question_is_single_step_without_planner() -> None:
     assert len(worker.calls) == 1
     assert len(state["plan"]) == 1
     assert state["answer"].startswith("SYNTH")
+    assert "not investment advice" in state["answer"]  # disclaimer appended (T-022)
     assert not state["partial"]
 
 
