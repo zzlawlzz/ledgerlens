@@ -1,0 +1,164 @@
+"""AG-UI endpoint (T-023; ARCHITECTURE §6, CONTRACTS §10).
+
+``POST /agui`` takes the protocol's ``RunAgentInput`` (thread_id = the
+checkpointer session, the last user message = the question) and streams
+AG-UI events over SSE. The adapter translates internal TraceEvents strictly
+by the CONTRACTS §10 table:
+
+    run_started/finished/error -> RUN_STARTED / RUN_FINISHED / RUN_ERROR
+    plan_created               -> STATE_SNAPSHOT {plan, steps}
+    plan_updated, step_*       -> STATE_DELTA (JSON Patch RFC 6902)
+    tool_call_started/finished -> TOOL_CALL_START + ARGS / TOOL_CALL_END
+    agent_thought, guardrail,
+    llm_call, budget           -> CUSTOM (named)
+    final answer               -> TEXT_MESSAGE_START / CONTENT / END
+
+The old ``/api/chat`` SSE stays as the curl-friendly debug endpoint.
+"""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import AsyncIterator
+from typing import Any
+
+from ag_ui.core import RunAgentInput
+from ag_ui.core.events import (
+    BaseEvent,
+    CustomEvent,
+    RunErrorEvent,
+    RunFinishedEvent,
+    RunStartedEvent,
+    StateDeltaEvent,
+    StateSnapshotEvent,
+    TextMessageContentEvent,
+    TextMessageEndEvent,
+    TextMessageStartEvent,
+    ToolCallArgsEvent,
+    ToolCallEndEvent,
+    ToolCallStartEvent,
+)
+from ag_ui.encoder import EventEncoder
+
+from common.tracing import TraceEvent
+
+ANSWER_CHUNK_CHARS = 160
+
+
+class TraceToAgUiAdapter:
+    """Stateful translator: one instance per run (tracks tool-call ids)."""
+
+    def __init__(self, thread_id: str, run_id: str) -> None:
+        self._thread_id = thread_id
+        self._run_id = run_id
+        self._open_tool_calls: dict[str, str] = {}  # tool name -> tool_call_id
+
+    def translate(self, event: TraceEvent) -> list[BaseEvent]:
+        payload = event.payload
+        match event.event:
+            case "run_started":
+                return [RunStartedEvent(thread_id=self._thread_id, run_id=self._run_id)]
+            case "plan_created":
+                return [
+                    StateSnapshotEvent(snapshot={"plan": payload.get("steps", []), "steps": {}})
+                ]
+            case "plan_updated":
+                return [
+                    StateDeltaEvent(
+                        delta=[
+                            {
+                                "op": "replace",
+                                "path": "/plan",
+                                "value": payload.get("steps", []),
+                            }
+                        ]
+                    )
+                ]
+            case "step_started" | "step_finished":
+                step_id = str(payload.get("plan_step", payload.get("node", "step")))
+                status = (
+                    "running" if event.event == "step_started" else payload.get("status", "done")
+                )
+                value: dict[str, Any] = {"status": status}
+                if payload.get("goal"):
+                    value["goal"] = payload["goal"]
+                if payload.get("worker_node"):
+                    value["worker_node"] = payload["worker_node"]
+                return [
+                    StateDeltaEvent(
+                        delta=[{"op": "add", "path": f"/steps/{step_id}", "value": value}]
+                    )
+                ]
+            case "tool_call_started":
+                tool = str(payload.get("tool", "tool"))
+                call_id = str(uuid.uuid4())
+                self._open_tool_calls[tool] = call_id
+                import json
+
+                return [
+                    ToolCallStartEvent(tool_call_id=call_id, tool_call_name=tool),
+                    ToolCallArgsEvent(
+                        tool_call_id=call_id,
+                        delta=json.dumps(payload.get("arguments", {}), ensure_ascii=False),
+                    ),
+                ]
+            case "tool_call_finished":
+                tool = str(payload.get("tool", "tool"))
+                call_id = self._open_tool_calls.pop(tool, str(uuid.uuid4()))
+                return [ToolCallEndEvent(tool_call_id=call_id)]
+            case "agent_thought":
+                return [CustomEvent(name="thought", value={"text": payload.get("text", "")})]
+            case "guardrail" | "llm_call" | "budget":
+                return [CustomEvent(name=event.event, value=dict(payload))]
+            case "run_finished":
+                message_id = str(uuid.uuid4())
+                answer = str(payload.get("answer", ""))
+                content = [
+                    TextMessageContentEvent(
+                        message_id=message_id,
+                        delta=answer[i : i + ANSWER_CHUNK_CHARS],
+                    )
+                    for i in range(0, len(answer), ANSWER_CHUNK_CHARS)
+                ] or [TextMessageContentEvent(message_id=message_id, delta=" ")]
+                return [
+                    TextMessageStartEvent(message_id=message_id),
+                    *content,
+                    TextMessageEndEvent(message_id=message_id),
+                    CustomEvent(
+                        name="run_summary",
+                        value={
+                            "status": payload.get("status"),
+                            "key_values": payload.get("key_values", {}),
+                            "citations": payload.get("citations", []),
+                            "partial": payload.get("partial", False),
+                            "usage": payload.get("usage", {}),
+                        },
+                    ),
+                    RunFinishedEvent(thread_id=self._thread_id, run_id=self._run_id),
+                ]
+            case "run_error":
+                return [RunErrorEvent(message=str(payload.get("error", "unknown error")))]
+            case _:
+                return []
+
+
+def extract_question(body: RunAgentInput) -> str:
+    """The last user message is the question."""
+    for message in reversed(body.messages or []):
+        if getattr(message, "role", "") == "user" and getattr(message, "content", ""):
+            return str(message.content)
+    raise ValueError("RunAgentInput has no user message")
+
+
+async def stream_agui_run(
+    body: RunAgentInput,
+    trace_queue: AsyncIterator[TraceEvent],
+) -> AsyncIterator[str]:
+    """TraceEvents -> encoded AG-UI SSE lines (terminates on run end)."""
+    encoder = EventEncoder()
+    adapter = TraceToAgUiAdapter(body.thread_id, body.run_id)
+    async for trace_event in trace_queue:
+        for agui_event in adapter.translate(trace_event):
+            yield encoder.encode(agui_event)
+        if trace_event.event in ("run_finished", "run_error"):
+            return

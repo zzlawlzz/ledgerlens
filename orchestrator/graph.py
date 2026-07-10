@@ -312,6 +312,16 @@ class Orchestrator:
             await self._publish("step_finished", {"status": "failed", "plan_step": step.id})
             return {"plan": _dump_plan(steps), "results": results}
 
+        if not client.relays_trace:
+            # Remote worker: its trace arrived with the result — replay it on
+            # our bus so the stream and llm_calls/tool_calls (cost accounting
+            # for the budget) stay complete.
+            for raw in result.trace:
+                try:
+                    await self._publish(str(raw.get("event")), dict(raw.get("payload", {})))
+                except Exception as exc:  # noqa: BLE001 — relay must not kill the step
+                    self._log.warning("trace_relay_failed", error=str(exc)[:120])
+
         status_map: dict[str, Literal["pending", "done", "failed", "no_data"]] = {
             "succeeded": "done",
             "no_data": "no_data",

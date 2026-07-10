@@ -20,6 +20,12 @@ A2A_EXTRA_TIMEOUT_S = 10.0
 
 
 class WorkerClient(ABC):
+    # True when the worker publishes its TraceEvents live on the orchestrator
+    # bus; False makes the orchestrator relay result.trace after the fact
+    # (remote workers — keeps the stream and llm_calls/tool_calls accounting
+    # complete, T-023).
+    relays_trace = True
+
     @abstractmethod
     async def run(self, task: WorkerTask) -> WorkerResult:
         """Execute one worker task and return its result."""
@@ -42,6 +48,8 @@ class A2AWorkerClient(WorkerClient):
     assess/replan loop decides what to do, the client never hangs (timeout =
     task deadline + 10s).
     """
+
+    relays_trace = False  # remote trace arrives in result.trace, relayed by the graph
 
     def __init__(self, base_url: str, token: str) -> None:
         self._base_url = base_url.rstrip("/")

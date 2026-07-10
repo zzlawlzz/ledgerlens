@@ -19,7 +19,8 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from ag_ui.core import RunAgentInput
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -28,6 +29,7 @@ from common.config import get_settings, load_yaml_config
 from common.db import get_session_factory
 from common.logging import bind_run_context, configure_logging, get_logger, reset_run_context
 from common.tracing import Subscriber, TraceBus, TraceEvent, make_log_subscriber
+from orchestrator.agui import extract_question, stream_agui_run
 from orchestrator.graph import Orchestrator
 from orchestrator.persistence import create_run, finalize_run, make_db_subscriber
 from orchestrator.worker_client import A2AWorkerClient, LocalWorkerClient, WorkerClient
@@ -276,6 +278,41 @@ async def chat(request: ChatRequest) -> StreamingResponse:
     asyncio.create_task(_execute_run(run_id, request))
     return StreamingResponse(
         _drain_events(queue, subscriber),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Run-Id": str(run_id)},
+    )
+
+
+@app.post("/agui")
+async def agui(body: RunAgentInput) -> StreamingResponse:
+    """AG-UI protocol endpoint (T-023): RunAgentInput -> AG-UI SSE stream.
+
+    thread_id maps to the checkpointer session, so follow-up questions in the
+    same thread keep their dialogue context.
+    """
+    ensure_stream_infrastructure()
+    try:
+        question = extract_question(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    run_id = await create_run(question, get_settings().app_mode)
+    queue, subscriber = _subscribe_run_events(str(run_id))
+    request = ChatRequest(question=question, session_id=body.thread_id)
+    asyncio.create_task(_execute_run(run_id, request))
+
+    async def _trace_events() -> AsyncIterator[TraceEvent]:
+        while True:
+            yield await queue.get()
+
+    async def _stream() -> AsyncIterator[str]:
+        try:
+            async for chunk in stream_agui_run(body, _trace_events()):
+                yield chunk
+        finally:
+            TRACE_BUS.unsubscribe(subscriber)
+
+    return StreamingResponse(
+        _stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Run-Id": str(run_id)},
     )
