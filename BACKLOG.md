@@ -36,7 +36,7 @@
 | T-014 | Chat API v0 (SSE) + запись ранов в БД | 1 | T-013 | M | [done 2026-07-10 e38bfa4] |
 | T-015 | Compose v1, смоук-тест — **гейт G1** | 1 | T-006, T-011, T-014 | S | [done 2026-07-10 e7d6112]⁴ **G1 ✅** |
 | T-016 | Model Router (tiered + fallback + стоимость) | 2. MVP | T-002, T-004 | L | [done 2026-07-10 1c3cc0e]⁵ |
-| T-017 | Локальный инференс (Ollama) в контуре | 2 | T-016 | S | [ ] |
+| T-017 | Локальный инференс (Ollama) в контуре | 2 | T-016 | S | [wip 2026-07-10 26931df]⁶ |
 | T-018 | Qdrant, чанкинг, эмбеддинги в ingestion | 2 | T-002, T-011 | M | [ ] |
 | T-019 | Инструмент rag_search (hybrid + rerank + цитаты) | 2 | T-018 | L | [ ] |
 | T-020 | Оркестратор Plan-and-Execute | 2 | T-013, T-016 | L | [ ] |
@@ -64,6 +64,7 @@
 ¹ T-001: репозиторий https://github.com/zzlawlzz/ledgerlens создан 2026-07-10 после gh auth (коммит 86cdbdb — LICENSE holder); Q-14 закрыт.
 ⁴ T-015: **гейт G1 пройден 2026-07-10** — чистый volume → compose up (авто-миграции) → demo-ingest 5 тикеров (67 filings, 2168 facts, 34 sections, 0 ошибок) → smoke 3/3; трейс ReAct в логах контейнера; pluggable-purity grep-тест. SEC-троттлинг обойдён прокси через VPS-FI (`deploy/edgar-proxy.md`).
 ⁵ T-016: live-критерий «route уходит в local-тир» финализируется в T-017 на железе с Ollama; на dev-машине доказан fallback local→cloud (падение локального тира прозрачно уводит в облако).
+⁶ T-017: код и compose готовы; критерий «остановка ollama → fallback в облако» закрыт живым тестом; критерий «route обслуживается локально (provider=ollama)» ждёт докачки образа ollama + модели qwen3.5:4b (Docker Hub медленный) — прогнать `uv run pytest -m slow tests/integration/test_ollama_integration.py` после `docker compose --profile local up`.
 ³ T-011: живой критерий закрыт 2026-07-10 через EDGAR-прокси (SEC троттлил полосу домашнего IP >4 часов — зеркальный риск §5.6 подтверждён и замитигирован по плану: tinyproxy на VPS-FI, `deploy/edgar-proxy.md`).
 ² T-009: отклонение критерия «≥12 из 16 метрик» для JPM — у банков структурно отсутствуют 6 метрик (cost_of_revenue, gross_profit, operating_income, capex, rnd_expense; long_term_debt не под нашими тегами в свежих 10-K); честный максимум 10/16, зафиксирован тестом. AAPL — 16/16, эталонные значения сверены. Словарь §7 расширен тегом CashAndDueFromBanks (банки).
 
