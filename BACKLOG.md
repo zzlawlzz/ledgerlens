@@ -31,7 +31,7 @@
 | T-009 | EDGAR: XBRL-факты и нормализация метрик | 1 | T-008 | L | [done 2026-07-10 5dee4c6]² |
 | T-010 | EDGAR: нарративные разделы 10-K | 1 | T-008 | L | [done 2026-07-10 be533e2] |
 | T-011 | Ingestion CLI (идемпотентный) | 1 | T-005, T-009, T-010 | M | [wip 2026-07-10 9237ffe]³ |
-| T-012 | Инструменты sql_query и schema_introspect | 1 | T-005 | M | [ ] |
+| T-012 | Инструменты sql_query и schema_introspect | 1 | T-005 | M | [done 2026-07-10 3a8d661] |
 | T-013 | Worker-агент ReAct (LangGraph) | 1 | T-004, T-012 | M | [ ] |
 | T-014 | Chat API v0 (SSE) + запись ранов в БД | 1 | T-013 | M | [ ] |
 | T-015 | Compose v1, смоук-тест — **гейт G1** | 1 | T-006, T-011, T-014 | S | [ ] |
