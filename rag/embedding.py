@@ -67,6 +67,19 @@ class ChunkEmbedder:
             for emb in self._sparse.embed(texts)
         ]
 
+    @cached_property
+    def _reranker(self) -> Any:
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+
+        rerank_config = load_yaml_config("rag")["search"]["rerank"]
+        model_name = str(rerank_config["model"])
+        self._log.info("loading_reranker", model=model_name)
+        return TextCrossEncoder(model_name, cache_dir=str(FASTEMBED_CACHE_DIR))
+
+    def rerank(self, query: str, documents: list[str]) -> list[float]:
+        """Cross-encoder relevance scores (raw logits) for query/document pairs."""
+        return [float(score) for score in self._reranker.rerank(query, documents)]
+
     def token_counter(self) -> Any:
         """Token counter backed by the dense model's own tokenizer.
 
