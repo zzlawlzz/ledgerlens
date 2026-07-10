@@ -347,6 +347,7 @@ class Orchestrator:
             {
                 "status": result.status,
                 "plan_step": step.id,
+                "worker_node": result.node,  # WORKER_NODE_NAME from the worker (T-021)
                 "answer_preview": result.answer[:200],
             },
         )

@@ -147,7 +147,7 @@ def test_worker_result_serializes_per_contract() -> None:
     restored = WorkerResult.model_validate_json(result.model_dump_json())
     assert restored == result
     payload = restored.model_dump()
-    assert set(payload) == {"task_id", "status", "answer", "evidence", "trace", "usage"}
+    assert set(payload) == {"task_id", "status", "answer", "evidence", "trace", "usage", "node"}
 
 
 def test_prompt_loads_with_mandatory_blocks() -> None:

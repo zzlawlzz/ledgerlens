@@ -30,7 +30,7 @@ from common.logging import bind_run_context, configure_logging, get_logger, rese
 from common.tracing import Subscriber, TraceBus, TraceEvent, make_log_subscriber
 from orchestrator.graph import Orchestrator
 from orchestrator.persistence import create_run, finalize_run, make_db_subscriber
-from orchestrator.worker_client import LocalWorkerClient, WorkerClient
+from orchestrator.worker_client import A2AWorkerClient, LocalWorkerClient, WorkerClient
 
 TRACE_BUS = TraceBus()
 STREAM_QUEUE_MAX = 1000
@@ -142,16 +142,18 @@ class ChatRequest(BaseModel):
 
 
 def _build_orchestrator(checkpointer: object | None) -> Orchestrator:
-    """Worker registry from config/workers.yaml; url 'local' = in-process."""
+    """Worker registry from config/workers.yaml; url 'local' = in-process,
+    anything else is an A2A endpoint (T-021)."""
     registry = load_yaml_config("workers")["workers"]
     clients: dict[str, WorkerClient] = {}
     skills: dict[str, list[str]] = {}
     for entry in registry:
         name = str(entry["name"])
-        if str(entry["url"]) == "local":
+        url = str(entry["url"])
+        if url == "local":
             clients[name] = LocalWorkerClient(trace_bus=TRACE_BUS)
-        else:  # pragma: no cover — A2A clients arrive in T-021
-            continue
+        else:
+            clients[name] = A2AWorkerClient(url, get_settings().a2a_token)
         skills[name] = [str(s) for s in entry.get("skills", [])]
     return Orchestrator(
         worker_clients=clients,

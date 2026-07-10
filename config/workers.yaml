@@ -1,6 +1,9 @@
 # Worker registry (CONTRACTS.md §10; dispatch by skills — T-020/T-021/T-031).
 # url: "local" means in-process LocalWorkerClient; anything else is an A2A endpoint.
+# A second node (T-031) is one more entry here — no code changes.
+# Host default is in-process (dev/tests); compose sets WORKER_URL to the A2A
+# service (http://worker:8081).
 workers:
   - name: worker-local
-    url: local
+    url: ${WORKER_URL:local}
     skills: [financial_sql_analysis, narrative_rag_analysis]

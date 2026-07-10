@@ -67,3 +67,4 @@ class WorkerResult(BaseModel):
     evidence: WorkerEvidence = Field(default_factory=WorkerEvidence)
     trace: list[dict[str, Any]] = Field(default_factory=list)  # serialized TraceEvents
     usage: WorkerUsage = Field(default_factory=WorkerUsage)
+    node: str = ""  # WORKER_NODE_NAME of the executing worker (T-021)
