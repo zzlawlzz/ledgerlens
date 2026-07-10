@@ -69,3 +69,13 @@ def test_secret_values_are_masked(capsys: pytest.CaptureFixture[str]) -> None:
     assert data["payload"]["nested"]["a2a_token"] == MASK
     assert data["payload"]["plain"] == "visible"
     assert data["items"][0]["grafana_admin_password"] == MASK
+
+
+def test_usage_counters_are_not_masked(capsys: pytest.CaptureFixture[str]) -> None:
+    """tokens_in/tokens_out are metrics, not credentials (T-004 fix)."""
+    configure_logging("svc")
+    get_logger().info("usage", usage={"tokens_in": 100, "tokens_out": 20}, token="cred")
+    data = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert data["usage"]["tokens_in"] == 100
+    assert data["usage"]["tokens_out"] == 20
+    assert data["token"] == MASK

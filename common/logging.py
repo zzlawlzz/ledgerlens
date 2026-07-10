@@ -13,7 +13,7 @@ from typing import Any
 
 import structlog
 
-_SECRET_KEY_MARKERS = ("api_key", "apikey", "password", "token", "secret", "encryption_key")
+_SECRET_KEY_MARKERS = ("api_key", "apikey", "password", "secret", "encryption_key")
 MASK = "***"
 
 
@@ -29,7 +29,14 @@ def _mask_secrets_in(value: Any) -> Any:
 
 
 def _is_secret_key(key: object) -> bool:
-    return isinstance(key, str) and any(marker in key.lower() for marker in _SECRET_KEY_MARKERS)
+    if not isinstance(key, str):
+        return False
+    lowered = key.lower()
+    if any(marker in lowered for marker in _SECRET_KEY_MARKERS):
+        return True
+    # "token" alone is too broad: usage counters (tokens_in/tokens_out) are
+    # not secrets. Mask only credential-style token keys.
+    return lowered == "token" or lowered.endswith("_token")
 
 
 def _mask_secrets_processor(
