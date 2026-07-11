@@ -111,6 +111,21 @@ function applyCustom(view: RunView, event: StreamEvent): RunView {
       return { ...view, thoughts: [...view.thoughts, String(value?.text ?? "")] };
     case "llm_call":
       return { ...view, llmCalls: view.llmCalls + 1 };
+    case "tool_result": {
+      const callId = String(value?.tool_call_id ?? "");
+      return {
+        ...view,
+        toolCalls: view.toolCalls.map((call) =>
+          call.id === callId
+            ? {
+                ...call,
+                error: value?.status === "error",
+                preview: String(value?.preview ?? ""),
+              }
+            : call,
+        ),
+      };
+    }
     case "guardrail":
       return {
         ...view,

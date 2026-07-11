@@ -105,7 +105,19 @@ class TraceToAgUiAdapter:
             case "tool_call_finished":
                 tool = str(payload.get("tool", "tool"))
                 call_id = self._open_tool_calls.pop(tool, str(uuid.uuid4()))
-                return [ToolCallEndEvent(tool_call_id=call_id)]
+                return [
+                    ToolCallEndEvent(tool_call_id=call_id),
+                    # Status/preview for the UI: a failed call is highlighted
+                    # so the self-correction chain reads clearly (T-025).
+                    CustomEvent(
+                        name="tool_result",
+                        value={
+                            "tool_call_id": call_id,
+                            "status": payload.get("status", "ok"),
+                            "preview": str(payload.get("preview", ""))[:400],
+                        },
+                    ),
+                ]
             case "agent_thought":
                 return [CustomEvent(name="thought", value={"text": payload.get("text", "")})]
             case "guardrail" | "llm_call" | "budget":

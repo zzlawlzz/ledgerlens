@@ -63,11 +63,16 @@ function ToolCalls({ run }: { run: RunView }) {
     <div className="tool-calls" data-testid="tool-calls">
       <h3>{t("tool_calls_title")}</h3>
       {run.toolCalls.map((call) => (
-        <details key={call.id} className={call.done ? "tool done" : "tool running"}>
+        <details
+          key={call.id}
+          className={call.error ? "tool errored" : call.done ? "tool done" : "tool running"}
+          data-testid={call.error ? "tool-call-error" : "tool-call"}
+        >
           <summary>
-            <code>{call.name}</code> {call.done ? "✓" : "…"}
+            <code>{call.name}</code> {call.error ? "✗" : call.done ? "✓" : "…"}
           </summary>
           <pre className="tool-args">{prettyArgs(call.args)}</pre>
+          {call.preview && <pre className="tool-preview">{call.preview}</pre>}
         </details>
       ))}
     </div>

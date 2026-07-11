@@ -13,6 +13,8 @@ export interface ToolCall {
   name: string;
   args: string;
   done: boolean;
+  error?: boolean;
+  preview?: string;
 }
 
 export interface Citation {
