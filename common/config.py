@@ -176,6 +176,7 @@ KNOWN_CONFIGS = (
     "router",
     "prices",
     "rag",
+    "enrich",
     "budgets",
     "workers",
     "guardrail_patterns",
