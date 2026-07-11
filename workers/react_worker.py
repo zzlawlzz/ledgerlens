@@ -33,21 +33,34 @@ from model_router.router import RouterChatModel, RouterClient
 from tools.sql.core import schema_introspect, sql_query
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "worker_react.md"
+GROUND_CHECK_PROMPT_PATH = (
+    Path(__file__).resolve().parent.parent / "prompts" / "worker_ground_check.md"
+)
 THOUGHT_PREVIEW_CHARS = 300
 PREVIEW_CHARS = 500
 NO_DATA_MARKER = "NO_DATA:"
+DEFAULT_RAG_TOP_K = 8  # mirrors tools.rag.core.DEFAULT_TOP_K (T-041)
+GROUND_CHECK_CONTEXT_MAX_CHARS = 8000
 
 ToolImpl = Callable[..., Awaitable[dict[str, Any]]]
 
 
-def load_worker_prompt() -> str:
+def _prompt_body(path: Path) -> str:
     """Prompt body without the version header (id/task_class/version)."""
-    text = PROMPT_PATH.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
     if text.startswith("---"):
         rest = text.partition("---")[2]
         rest = rest.partition("---")[2]
         return rest.strip()
     return text.strip()
+
+
+def load_worker_prompt() -> str:
+    return _prompt_body(PROMPT_PATH)
+
+
+def load_ground_check_prompt() -> str:
+    return _prompt_body(GROUND_CHECK_PROMPT_PATH)
 
 
 _MCP_SERVER_TOOLS = {
@@ -129,7 +142,7 @@ def _default_tool_impls() -> dict[str, ToolImpl]:
         return await schema_introspect()
 
     async def _rag_search(
-        query: str, top_k: int = 5, filters: dict[str, Any] | None = None
+        query: str, top_k: int = DEFAULT_RAG_TOP_K, filters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         from tools.rag.core import rag_search
 
@@ -148,6 +161,7 @@ def _build_tools(
     bus: TraceBus,
     usage: WorkerUsage,
     evidence: WorkerEvidence,
+    raw_chunks: list[str],
 ) -> list[StructuredTool]:
     tools: list[StructuredTool] = []
 
@@ -181,6 +195,11 @@ def _build_tools(
                 citation = chunk.get("citation")
                 if citation:
                     evidence.citations.append(dict(citation))
+                    tag = (
+                        f"[{citation.get('ticker')} {citation.get('form_type')} "
+                        f"{citation.get('period')}, {citation.get('section')}]"
+                    )
+                    raw_chunks.append(f"{tag}\n{chunk.get('text', '')}")
         return payload
 
     if "sql_query" in task.allowed_tools and "sql_query" in impls:
@@ -220,7 +239,9 @@ def _build_tools(
 
     if "rag_search" in task.allowed_tools and "rag_search" in impls:
 
-        async def _rag(query: str, top_k: int = 5, filters: dict[str, Any] | None = None) -> str:
+        async def _rag(
+            query: str, top_k: int = DEFAULT_RAG_TOP_K, filters: dict[str, Any] | None = None
+        ) -> str:
             """Search narrative filing sections (risk factors, MD&A) with citations."""
             return await _traced_call(
                 "rag_search", {"query": query, "top_k": top_k, "filters": filters or {}}
@@ -251,6 +272,34 @@ def _render_task(task: WorkerTask) -> str:
             + json.dumps(task.context.prior_results, ensure_ascii=False, default=str)[:2000]
         )
     return "\n".join(parts)
+
+
+async def _ground_check(
+    router: RouterClient, *, question: str, draft: str, raw_chunks: list[str]
+) -> str:
+    """Post-answer grounding rewrite (T-041): the ReAct loop's draft answer
+    tends to pad narrative lists with facts the model "knows" but that were
+    never actually retrieved, despite the prompt forbidding it — a second
+    pass with the SAME raw chunks (not the truncated digest orchestrator
+    synthesize sees) catches what the drafting pass missed. Degrades to the
+    draft, unchanged, on any failure — never blocks the worker's answer."""
+    context = "\n---\n".join(raw_chunks)[:GROUND_CHECK_CONTEXT_MAX_CHARS]
+    try:
+        response = await router.chat(
+            "ground_check",
+            [
+                ("system", load_ground_check_prompt()),
+                (
+                    "user",
+                    f"QUESTION:\n{question}\n\nRETRIEVED_CONTEXT:\n{context}\n\n"
+                    f"DRAFT_ANSWER:\n{draft}",
+                ),
+            ],
+        )
+        text = response.text.strip()
+        return text or draft
+    except Exception:  # noqa: BLE001 — grounding is a quality pass, not a gate
+        return draft
 
 
 async def _publish_ai_message(message: AIMessage, bus: TraceBus, usage: WorkerUsage) -> str:
@@ -292,14 +341,19 @@ async def run_worker_task(
     last_ai_text = ""
     log = get_logger(node="worker")
     try:
-        chat_model: BaseChatModel = model or RouterChatModel(
-            task_class="reason", router=RouterClient(trace_bus=bus)
-        )
+        router_client: RouterClient | None = None
+        chat_model: BaseChatModel
+        if model is not None:
+            chat_model = model
+        else:
+            router_client = RouterClient(trace_bus=bus)
+            chat_model = RouterChatModel(task_class="reason", router=router_client)
         mcp_impls = (
             await _load_mcp_impls(_tool_endpoints(), task.run_id) if tool_impls is None else {}
         )
         impls = {**_default_tool_impls(), **mcp_impls, **(tool_impls or {})}
-        tools = _build_tools(task, impls, bus, usage, evidence)
+        raw_chunks: list[str] = []
+        tools = _build_tools(task, impls, bus, usage, evidence, raw_chunks)
         agent = create_react_agent(chat_model, tools, prompt=load_worker_prompt())
         # We enforce max_iterations ourselves (langgraph's prebuilt agent ends
         # the stream politely instead of raising); the recursion limit below is
@@ -342,6 +396,10 @@ async def run_worker_task(
             else:
                 status = "failed"
                 answer = "the agent produced no final answer"
+            if status == "succeeded" and raw_chunks and router_client is not None:
+                answer = await _ground_check(
+                    router_client, question=task.goal, draft=answer, raw_chunks=raw_chunks
+                )
         except TimeoutError:
             status = "budget_exceeded"
             answer = last_ai_text or (

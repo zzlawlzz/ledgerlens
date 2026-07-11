@@ -301,7 +301,7 @@ DTO (`common/models.py`, pydantic): `Company`, `Filing`, `FinancialFact`, `Filin
 **schema_introspect** — без параметров. Выход: `{"tables": [{name, columns:[{name,type,description}]}], "metrics": [{name, description, unit_hint}], "examples": [sql...]}`. Обязательно описывает `latest_facts` как основную точку входа.
 
 **rag_search**
-- Вход: `{"query": str, "top_k": int<=10 (default 5), "filters": {"tickers": [..]?, "form_types": [..]?, "sections": [..]?, "period_from": date?, "period_to": date?}}`
+- Вход: `{"query": str, "top_k": int<=10 (default 8, raised from 5 in T-041 — 5 starved "list all risks" questions), "filters": {"tickers": [..]?, "form_types": [..]?, "sections": [..]?, "period_from": date?, "period_to": date?}}`
 - Выход: `{"chunks": [{"text": str, "score": float, "citation": {"ticker","form_type","period","section","source_url","filing_id","chunk_id"}}], "no_results": bool}`
 - При пустой выдаче `no_results=true` + текст «данных нет» — агент обязан честно ответить «нет данных», не фантазировать.
 

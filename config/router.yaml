@@ -29,6 +29,9 @@ policy:
   reason: [cloud_cheap, cloud_strong]
   synthesize: [cloud_strong, cloud_cheap]
   judge: [cloud_strong]
+  # T-041: post-answer grounding rewrite for narrative worker answers —
+  # verifying claims against raw retrieved chunks, same quality bar as reason.
+  ground_check: [cloud_cheap, cloud_strong]
 
 retries:
   attempts: 2

@@ -12,7 +12,7 @@ embedding:
   sparse_model: Qdrant/bm25   # fastembed sparse model for hybrid search
 
 search:
-  top_k: 5
+  top_k: 8  # T-041: raised from 5 — narrow default starved "list all risks" questions (see tools/rag/core.py DEFAULT_TOP_K, documentation only, not read at runtime)
   prefetch_limit: 20          # per-vector candidates before fusion (RRF)
   rerank:
     enabled: true

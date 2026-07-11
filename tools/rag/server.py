@@ -48,7 +48,7 @@ def _shared_components() -> tuple[Any, Any]:
 @server.tool(name="rag_search")
 async def rag_search(
     query: str,
-    top_k: int = 5,
+    top_k: int = core.DEFAULT_TOP_K,
     filters: dict[str, Any] | None = None,
     ctx: Context = None,  # type: ignore[type-arg,assignment]
 ) -> dict[str, Any]:

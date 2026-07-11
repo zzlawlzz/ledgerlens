@@ -23,7 +23,10 @@ from rag.embedding import ChunkEmbedder
 from rag.indexer import COLLECTION, DENSE_VECTOR, SPARSE_VECTOR, NarrativeIndexer
 
 MAX_TOP_K = 10
-DEFAULT_TOP_K = 5
+# T-041: 5 starved "list every risk" questions — retrieval had strictly fewer
+# candidate chunks than the risk types a 10-K discloses, and the model padded
+# the gap from training knowledge despite the prompt forbidding it.
+DEFAULT_TOP_K = 8
 SNIPPET_CHARS = 300
 
 
