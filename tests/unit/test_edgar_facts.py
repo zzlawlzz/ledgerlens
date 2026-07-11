@@ -29,6 +29,10 @@ JPM_BANK_ABSENT_METRICS = {
     "rnd_expense",
 }
 
+# MOEX-sourced market metrics (T-032) have no GAAP tag chain, so the EDGAR
+# extractor reports them as missing for every company — expected.
+MARKET_METRICS = {"close_price", "market_cap"}
+
 
 def _extract(ticker: str) -> tuple[list[FinancialFact], ExtractionStats]:
     data = json.loads((FIXTURES_DIR / f"{ticker}_companyfacts.json").read_text(encoding="utf-8"))
@@ -46,7 +50,7 @@ def _fy_values(facts: list[FinancialFact], metric: str) -> dict[date, set[Decima
 def test_aapl_extracts_at_least_12_of_16_metrics() -> None:
     _, stats = _extract("aapl")
     assert len(stats.found) >= 12
-    assert stats.missing == []  # Apple actually yields all 16
+    assert set(stats.missing) == MARKET_METRICS  # Apple yields all 16 XBRL metrics
 
 
 def test_aapl_reference_values_for_last_three_fy() -> None:
@@ -77,7 +81,7 @@ def test_aapl_unit_edge_cases_eps_and_shares() -> None:
 def test_jpm_bank_extracts_structural_maximum() -> None:
     facts, stats = _extract("jpm")
     assert len(stats.found) >= 10
-    assert set(stats.missing) <= JPM_BANK_ABSENT_METRICS
+    assert set(stats.missing) <= JPM_BANK_ABSENT_METRICS | MARKET_METRICS
     revenue = _fy_values(facts, "revenue")
     assert revenue[date(2024, 12, 31)] == {Decimal("177556000000")}
     # Bank cash comes from the T-009 chain extension.
