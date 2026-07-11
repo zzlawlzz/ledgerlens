@@ -37,8 +37,11 @@ YEARS ?= 3
 ingest:  ## Ingest source data (TICKERS=..., YEARS=...)
 	uv run python -m ingestion.run --source edgar --tickers $(TICKERS) --years $(YEARS)
 
-demo:  ## up + seed on empty DB + open UI
-	@echo "TODO(T-026): demo"
+demo:  ## Full stack up + ingest-on-empty + smoke + UI URL (gate G2)
+	docker compose --profile local up -d --wait
+	uv run python scripts/smoke_test.py --auto-ingest
+	@echo ""
+	@echo "LedgerLens UI: http://localhost:3000"
 
 seed:  ## Restore demo data snapshot without hitting EDGAR
 	@echo "TODO(T-036): seed"
