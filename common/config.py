@@ -171,7 +171,16 @@ def load_yaml_config(name: str, config_dir: Path | None = None) -> dict[str, Any
     return result
 
 
-KNOWN_CONFIGS = ("app", "router", "prices", "rag", "budgets", "workers", "guardrail_patterns")
+KNOWN_CONFIGS = (
+    "app",
+    "router",
+    "prices",
+    "rag",
+    "budgets",
+    "workers",
+    "guardrail_patterns",
+    "eval-thresholds",
+)
 
 
 def main(argv: list[str] | None = None) -> int:
