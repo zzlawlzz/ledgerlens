@@ -43,8 +43,10 @@ _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 SKILL_TOOLS: dict[str, list[str]] = {
     "financial_sql_analysis": ["sql_query", "schema_introspect"],
     "narrative_rag_analysis": ["rag_search"],
+    # T-033: EOD price context; sql_query rides along for company/date lookups.
+    "price_history_analysis": ["price_enrich", "sql_query"],
 }
-Skill = Literal["financial_sql_analysis", "narrative_rag_analysis"]
+Skill = Literal["financial_sql_analysis", "narrative_rag_analysis", "price_history_analysis"]
 
 CONTRADICTION_TOLERANCE = 0.02
 RESULT_SUMMARY_CHARS = 400

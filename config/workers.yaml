@@ -6,10 +6,11 @@
 workers:
   - name: worker-local
     url: ${WORKER_URL:local}
-    skills: [financial_sql_analysis, narrative_rag_analysis]
+    skills: [financial_sql_analysis, narrative_rag_analysis, price_history_analysis]
 
 # Tool transports (T-027): 'local' = in-process lib mode (unit tests, dev
 # host); compose points these at the MCP services.
 tool_endpoints:
   sql: ${MCP_SQL_URL:local}
   rag: ${MCP_RAG_URL:local}
+  enrich: ${MCP_ENRICH_URL:local}

@@ -1,0 +1,10 @@
+# price_enrich provider settings (T-033; CONTRACTS.md §9).
+# Stooq EOD CSV, no API key. Free-tier discipline: at most one external
+# request per min_interval_s and at most daily_request_limit per UTC day
+# (in-process counters; the prices table is the durable cache).
+provider:
+  name: stooq
+  base_url: https://stooq.com/q/d/l/
+  timeout_s: 10
+  min_interval_s: 1.0
+  daily_request_limit: ${ENRICH_DAILY_LIMIT:500}

@@ -67,6 +67,7 @@ def load_ground_check_prompt() -> str:
 _MCP_SERVER_TOOLS = {
     "sql": ("sql_query", "schema_introspect"),
     "rag": ("rag_search",),
+    "enrich": ("price_enrich",),
 }
 
 
@@ -149,10 +150,16 @@ def _default_tool_impls() -> dict[str, ToolImpl]:
 
         return await rag_search(query, top_k, filters)
 
+    async def _price_enrich(ticker: str, date_from: str, date_to: str) -> dict[str, Any]:
+        from tools.enrich.core import price_enrich
+
+        return await price_enrich(ticker, date_from, date_to)
+
     return {
         "sql_query": sql_query,
         "schema_introspect": _schema_introspect,
         "rag_search": _rag_search,
+        "price_enrich": _price_enrich,
     }
 
 
@@ -190,6 +197,15 @@ def _build_tools(
         if tool_name == "sql_query" and not is_error:
             evidence.facts.append(
                 {"sql": arguments.get("sql", ""), "row_count": result.get("row_count")}
+            )
+        if tool_name == "price_enrich" and not is_error and isinstance(result, dict):
+            evidence.facts.append(
+                {
+                    "ticker": arguments.get("ticker"),
+                    "price_points": len(result.get("series", [])),
+                    "source": result.get("source"),
+                    "cached": result.get("cached"),
+                }
             )
         if tool_name == "rag_search" and not is_error and isinstance(result, dict):
             for chunk in result.get("chunks", []):
@@ -257,6 +273,29 @@ def _build_tools(
                     "Returns text chunks with citations. Optional filters: tickers, "
                     "form_types, sections, period_from/period_to (ISO dates). "
                     "If no_results is true, honestly say the data is not loaded."
+                ),
+            )
+        )
+
+    if "price_enrich" in task.allowed_tools and "price_enrich" in impls:
+
+        async def _price_enrich(ticker: str, date_from: str, date_to: str) -> str:
+            """Fetch end-of-day close prices for one ticker (cache, then Stooq)."""
+            return await _traced_call(
+                "price_enrich",
+                {"ticker": ticker, "date_from": date_from, "date_to": date_to},
+            )
+
+        tools.append(
+            StructuredTool.from_function(
+                coroutine=_price_enrich,
+                name="price_enrich",
+                description=(
+                    "End-of-day close prices for one ticker between two ISO dates "
+                    "(YYYY-MM-DD). Returns {series: [{date, close, currency}], "
+                    "source, cached}. Use only as context for price dynamics — "
+                    "never for forecasts or buy/sell recommendations. On error, "
+                    "continue the analysis without price data."
                 ),
             )
         )
