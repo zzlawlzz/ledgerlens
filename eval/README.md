@@ -81,3 +81,36 @@ to hold the threshold on a full-profile run.
 failure to `/api/chat`); it does not retry a run that came back but reported
 `status != succeeded/budget_exceeded` — that is a real result to score
 (includes it as a fail), not a network blip.
+
+## Eval in CI (T-030)
+
+`.github/workflows/eval.yml` runs `eval.run --profile ci` on: manual dispatch,
+a nightly schedule, and any PR with the `eval` label attached. It never
+touches EDGAR — it restores the frozen 10-ticker demo corpus (T-028) from a
+`pg_dump` + Qdrant snapshot artifact produced by the separate, manual
+`eval-snapshot.yml` workflow (re-run that one only when the demo corpus or
+embedding model changes). Cloud-only routing: `LOCAL_MODEL` is cleared in
+CI's `.env` so the router drops the `local` tier at startup (no `ollama`
+service in the compose stack either) — same "no-local mode" documented in
+`docker-compose.yml`. Cost is capped by `run_cost_cap_usd` in
+`config/eval-thresholds.yaml` regardless of environment.
+
+**Reading a red run:**
+- **"THRESHOLD VIOLATIONS" with no baseline table** — a blocking metric
+  (anything not in `non_blocking`) is below its threshold on this run alone;
+  read `report.md`'s top-failures section (also posted as a PR comment) for
+  the specific cases.
+- **"Baseline comparison" table with a `REGRESSION` row** — a PR's category
+  pass_rate dropped more than 5 points vs. the last successful main-branch
+  run (`eval_baseline_compare.py`; the baseline itself comes from the
+  `eval-baseline-ci` artifact main uploads on every dispatch/schedule run,
+  win or lose, so a red main immediately becomes the new bar for the next
+  PR). No baseline artifact yet (first run) is not a failure.
+- Both checks are independent — the job fails if either fires.
+
+**Environment difference from self-hosted:** the harness always writes
+`eval_runs`/`eval_results` rows, but CI's Postgres is a fresh container torn
+down at the end of the job — those rows do not persist. The eval-history
+Grafana view (T-034) reads from the self-hosted stack's database, not CI;
+CI's durable record is the `report.json`/`report.md` artifact plus the PR
+comment.

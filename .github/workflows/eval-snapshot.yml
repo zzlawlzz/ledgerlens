@@ -1,0 +1,50 @@
+# Demo-corpus snapshot for eval-in-CI (T-030). Manual only: does a real
+# EDGAR ingest (10-ticker frozen corpus, T-028) + embed, then uploads a
+# pg_dump + Qdrant snapshot as a long-retention artifact. The `eval` workflow
+# restores from this artifact so it never touches EDGAR on a normal run.
+# Re-run this whenever the demo corpus or embedding model changes.
+name: eval-snapshot
+
+on:
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Prepare env
+        run: |
+          cp .env.example .env
+          sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-password/" .env
+          sed -i "s/^POSTGRES_RO_PASSWORD=.*/POSTGRES_RO_PASSWORD=ci-ro-password/" .env
+      - run: docker compose up -d postgres qdrant --wait
+      - name: Migrate schema
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_RO_PASSWORD: ci-ro-password
+        run: uv run alembic upgrade head
+      - name: Ingest the frozen 10-ticker corpus (T-028)
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_RO_PASSWORD: ci-ro-password
+          EDGAR_USER_AGENT: "ledgerlens ci@example.com"
+        run: |
+          uv run python -m ingestion.run --source edgar \
+            --tickers AAPL,MSFT,GOOGL,AMZN,META,TSLA,JPM,JNJ,WMT,NVDA \
+            --years 3 --embed
+      - name: Export snapshot
+        run: uv run python scripts/eval_snapshot.py export --dir snapshot/eval_demo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-demo-snapshot
+          path: snapshot/eval_demo
+          retention-days: 90
+      - if: always()
+        run: docker compose down -v

@@ -1,14 +1,160 @@
-# Eval-in-CI placeholder (T-006). Implemented by T-030: compose.ci stack,
-# demo-data snapshot restore, eval.run --profile ci with thresholds and baseline.
+# Eval-in-CI (T-030): runs eval.run --profile ci against the frozen demo
+# corpus restored from an eval-snapshot artifact (see eval-snapshot.yml) —
+# never touches EDGAR. Triggers: manual dispatch, nightly schedule (updates
+# the main-branch baseline), and PRs labeled `eval` (compared against that
+# baseline; see eval/README.md "Eval in CI").
 name: eval
 
 on:
   workflow_dispatch:
   schedule:
     - cron: "30 3 * * *"   # nightly
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
 
 jobs:
   eval:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'eval')
     runs-on: ubuntu-latest
     steps:
-      - run: echo "TODO(T-030) eval harness is wired here after T-029"
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+
+      - name: Prepare env
+        run: |
+          cp .env.example .env
+          sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-password/" .env
+          sed -i "s/^POSTGRES_RO_PASSWORD=.*/POSTGRES_RO_PASSWORD=ci-ro-password/" .env
+          sed -i "s/^DEEPSEEK_API_KEY=.*/DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}/" .env
+          sed -i "s/^LOCAL_MODEL=.*/LOCAL_MODEL=/" .env
+          sed -i "s/^A2A_TOKEN=.*/A2A_TOKEN=ci-a2a-token/" .env
+
+      # Demo-corpus fixture, restored once, never regenerated from EDGAR here.
+      - name: Download demo snapshot
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: eval-snapshot.yml
+          name: eval-demo-snapshot
+          path: snapshot/eval_demo
+          workflow_conclusion: success
+          if_no_artifact_found: fail
+
+      - run: docker compose up -d postgres qdrant --wait
+      - name: Migrate schema
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_RO_PASSWORD: ci-ro-password
+        run: uv run alembic upgrade head
+      - name: Restore demo snapshot
+        run: uv run python scripts/eval_snapshot.py restore --dir snapshot/eval_demo
+
+      # No `ollama` profile (T-017/T-018 no-local mode) + empty LOCAL_MODEL
+      # above: the router drops the local tier at startup, cloud-only routing.
+      - run: docker compose up -d --wait app worker mcp-sql mcp-rag
+
+      - name: Run eval --profile ci
+        id: eval_run
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_RO_PASSWORD: ci-ro-password
+        run: |
+          set +e
+          uv run python -m eval.run --profile ci --base-url http://localhost:8000
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Locate this run's report
+        id: report
+        run: |
+          latest="$(ls -td eval/reports/*/ | head -1)"
+          echo "dir=$latest" >> "$GITHUB_OUTPUT"
+
+      # Baseline = last successful main-branch run's report.json. Missing on
+      # the very first run — that is not a failure (eval_baseline_compare.py
+      # treats "no baseline" as pass).
+      - name: Download baseline
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: eval.yml
+          name: eval-baseline-ci
+          branch: main
+          path: baseline
+          workflow_conclusion: success
+          if_no_artifact_found: warn
+
+      - name: Compare against baseline
+        id: baseline_compare
+        if: github.event_name == 'pull_request'
+        run: |
+          set +e
+          uv run python scripts/eval_baseline_compare.py \
+            --current "${{ steps.report.outputs.dir }}report.json" \
+            --baseline baseline/report.json \
+            --out baseline_diff.md
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportPath = `${{ steps.report.outputs.dir }}report.md`;
+            const diffPath = 'baseline_diff.md';
+            const report = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : '(report.md missing)';
+            const diff = fs.existsSync(diffPath) ? fs.readFileSync(diffPath, 'utf8') : '';
+            const marker = '<!-- eval-report -->';
+            const body = `${marker}\n## Eval report\n\n${report}\n\n### Baseline comparison\n\n${diff}`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report-${{ github.run_id }}
+          path: ${{ steps.report.outputs.dir }}
+
+      # Nightly/dispatch runs on main become the next baseline, win or lose —
+      # a red main run should show up as red on the next PR diff too, not
+      # get silently swallowed by re-comparing against an older green one.
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: eval-baseline-ci
+          path: ${{ steps.report.outputs.dir }}report.json
+          retention-days: 90
+
+      - if: always()
+        run: docker compose down -v
+
+      - name: Fail on gate violations
+        run: |
+          exit_code="${{ steps.eval_run.outputs.exit_code }}"
+          baseline_code="${{ steps.baseline_compare.outputs.exit_code }}"
+          if [ "$exit_code" != "0" ]; then
+            echo "eval.run reported blocking threshold violations (exit $exit_code)"
+            exit 1
+          fi
+          if [ -n "$baseline_code" ] && [ "$baseline_code" != "0" ]; then
+            echo "category regression vs main baseline (exit $baseline_code)"
+            exit 1
+          fi
