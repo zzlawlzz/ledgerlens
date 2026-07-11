@@ -76,7 +76,11 @@ jobs:
       - name: Locate this run's report
         id: report
         run: |
-          latest="$(ls -td eval/reports/*/ | head -1)"
+          latest="$(ls -td eval/reports/*/ 2>/dev/null | head -1)"
+          if [ -z "$latest" ]; then
+            echo "::error::eval.run produced no report — it likely crashed before scoring any case (see the 'Run eval --profile ci' step's log, e.g. a missing DEEPSEEK_API_KEY secret)."
+            exit 1
+          fi
           echo "dir=$latest" >> "$GITHUB_OUTPUT"
 
       # Baseline = last successful main-branch run's report.json. Missing on
