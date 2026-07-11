@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
 
     grafana_admin_password: str = ""
+    grafana_ro_password: str = ""
     n8n_encryption_key: str = ""
 
     def cloud_llm_providers(self) -> list[str]:

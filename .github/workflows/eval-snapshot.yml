@@ -30,12 +30,14 @@ jobs:
           cp .env.example .env
           sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-password/" .env
           sed -i "s/^POSTGRES_RO_PASSWORD=.*/POSTGRES_RO_PASSWORD=ci-ro-password/" .env
+          sed -i "s/^GRAFANA_RO_PASSWORD=.*/GRAFANA_RO_PASSWORD=ci-grafana-ro-password/" .env
       - run: docker compose up -d postgres qdrant --wait
       - name: Migrate schema
         env:
           POSTGRES_HOST: localhost
           POSTGRES_PASSWORD: ci-password
           POSTGRES_RO_PASSWORD: ci-ro-password
+          GRAFANA_RO_PASSWORD: ci-grafana-ro-password
         run: uv run alembic upgrade head
       - name: Ingest the frozen 10-ticker corpus (T-028)
         env:

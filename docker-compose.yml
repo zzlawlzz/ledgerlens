@@ -85,6 +85,44 @@ services:
       retries: 12
     restart: unless-stopped
 
+  # Observability dashboards (T-034). Provisioning-as-code: the datasource and
+  # dashboards are mounted from ./observability — no manual import, `make up`
+  # brings Grafana up pre-wired. Host port 3001: 3000 is taken by the web UI.
+  # Anonymous access is viewer-only (demo); admin login still works for edits.
+  grafana:
+    image: grafana/grafana-oss:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Expanded by Grafana itself inside provisioning files
+      # (observability/datasources/postgres.yaml) — secrets never live in git.
+      POSTGRES_DB: ${POSTGRES_DB:-ledgerlens}
+      GRAFANA_RO_PASSWORD: ${GRAFANA_RO_PASSWORD:-}
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/dashboards.yaml:/etc/grafana/provisioning/dashboards/ledgerlens.yaml:ro
+      - ./observability/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # busybox wget (Alpine image); 127.0.0.1 to avoid ::1 resolution issues.
+      test:
+        ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
   # MCP tool servers (T-027): the worker loads tools over MCP; behaviour is
   # identical to lib mode, only the transport changes.
   mcp-sql:
@@ -201,3 +239,4 @@ volumes:
   pgdata:
   ollama-models:
   qdrant-data:
+  grafana-data:

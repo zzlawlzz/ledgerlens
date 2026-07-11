@@ -11,8 +11,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from common.db import get_ro_session_factory, get_session_factory
+from common.config import get_settings
+from common.db import build_dsn, get_ro_session_factory, get_session_factory
 
 pytestmark = pytest.mark.slow
 
@@ -80,6 +82,35 @@ async def test_app_ro_selects_latest_facts_but_cannot_write() -> None:
     async with ro_factory() as session:
         with pytest.raises(DBAPIError, match="(?i)permission denied"):
             await session.execute(text("SELECT * FROM runs LIMIT 1"))
+
+
+async def test_grafana_ro_reads_observability_but_cannot_write() -> None:
+    """T-034: the Grafana datasource role is SELECT-only over observability
+    tables and blind to domain data — the boundary that makes anonymous
+    viewer access safe."""
+    settings = get_settings()
+    if not settings.grafana_ro_password:
+        pytest.skip("GRAFANA_RO_PASSWORD is not set (migration 003 not applied here)")
+    engine = create_async_engine(
+        build_dsn(user="grafana_ro", password=settings.grafana_ro_password)
+    )
+    try:
+        async with engine.connect() as conn:
+            (await conn.execute(text("SELECT * FROM runs LIMIT 1"))).all()
+            (await conn.execute(text("SELECT * FROM eval_results LIMIT 1"))).all()
+
+        async with engine.connect() as conn:
+            with pytest.raises(DBAPIError, match="(?i)permission denied"):
+                await conn.execute(
+                    text("INSERT INTO runs (question, status) VALUES ('t034', 'running')")
+                )
+
+        # Observability-only grant: domain tables stay invisible to Grafana.
+        async with engine.connect() as conn:
+            with pytest.raises(DBAPIError, match="(?i)permission denied"):
+                await conn.execute(text("SELECT * FROM companies LIMIT 1"))
+    finally:
+        await engine.dispose()
 
 
 async def test_natural_keys_conflict_and_on_conflict_is_idempotent() -> None:

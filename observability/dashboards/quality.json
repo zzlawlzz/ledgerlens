@@ -1,0 +1,305 @@
+{
+  "id": null,
+  "uid": "ledgerlens-quality",
+  "title": "LedgerLens / Quality",
+  "description": "Eval-harness trends (T-034): pass rate by category, metric trends and cost per eval run. Sources: eval_runs, eval_results (written by eval.run, T-029).",
+  "tags": ["ledgerlens", "quality", "eval"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {"from": "now-30d", "to": "now"},
+  "annotations": {"list": []},
+  "templating": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Latest pass rate",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.6},
+              {"color": "green", "value": 0.8}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ((summary->>'total_passed')::float8 / nullif((summary->>'total_cases')::float8, 0)) AS pass_rate FROM eval_runs WHERE summary IS NOT NULL ORDER BY id DESC LIMIT 1"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Latest eval run",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": "/.*/"},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(git_sha, '?') || ' (' || profile || ')' AS last_run FROM eval_runs ORDER BY id DESC LIMIT 1"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latest eval cost",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT (summary->>'total_cost_usd')::float8 AS total_cost_usd FROM eval_runs WHERE summary IS NOT NULL ORDER BY id DESC LIMIT 1"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Eval runs (range)",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS eval_runs FROM eval_runs WHERE $__timeFilter(started_at)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Pass rate by category",
+      "description": "Per eval run: share of passed cases in each golden category (eval_results joined to eval_runs).",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": true
+          },
+          "color": {"mode": "palette-classic"}
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "none"}
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT er.started_at AS time, r.category AS metric, avg(CASE WHEN r.passed THEN 1.0 ELSE 0.0 END) AS value FROM eval_results r JOIN eval_runs er ON er.id = r.eval_run_id WHERE $__timeFilter(er.started_at) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Metric trends (eval_runs.summary)",
+      "description": "Aggregated metrics persisted by eval.run: gates from config/eval-thresholds.yaml apply to these values.",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": true
+          },
+          "color": {"mode": "palette-classic"}
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "none"}
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at AS time, (summary#>>'{metrics,numeric_accuracy}')::float8 AS numeric_accuracy, (summary#>>'{metrics,faithfulness}')::float8 AS faithfulness, (summary#>>'{metrics,citation_coverage}')::float8 AS citation_coverage, (summary#>>'{metrics,guardrail_block}')::float8 AS guardrail_block, (summary#>>'{metrics,nodata_honesty}')::float8 AS nodata_honesty FROM eval_runs WHERE $__timeFilter(started_at) AND summary IS NOT NULL ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Eval cost per run",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 13},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "showPoints": "never",
+            "stacking": {"mode": "none"}
+          },
+          "color": {"mode": "palette-classic"}
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "none"}
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at AS time, (summary->>'total_cost_usd')::float8 AS total_cost_usd, (summary#>>'{metrics,avg_cost_usd_per_case}')::float8 AS avg_cost_per_case FROM eval_runs WHERE $__timeFilter(started_at) AND summary IS NOT NULL ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Eval runs",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 13},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "auto"}},
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "cost_usd"},
+            "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 4}]
+          }
+        ]
+      },
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT er.id, er.started_at, coalesce(er.git_sha, '?') AS git_sha, er.profile, (er.summary->>'total_cases')::int AS cases, (er.summary->>'total_passed')::int AS passed, (er.summary->>'total_cost_usd')::float8 AS cost_usd FROM eval_runs er WHERE $__timeFilter(er.started_at) ORDER BY er.id DESC LIMIT 50"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Recent failed cases",
+      "description": "Failed eval_results with their per-case scores; run_id links back to the Session drill-down dashboard.",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 22},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto", "wrapText": true}}},
+        "overrides": []
+      },
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT er.started_at, coalesce(er.git_sha, '?') AS git_sha, r.case_id, r.category, coalesce(r.run_id::text, '') AS run_id, left(r.scores::text, 200) AS scores FROM eval_results r JOIN eval_runs er ON er.id = r.eval_run_id WHERE r.passed = false AND $__timeFilter(er.started_at) ORDER BY er.id DESC, r.case_id LIMIT 100"
+        }
+      ]
+    }
+  ]
+}

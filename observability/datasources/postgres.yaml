@@ -1,0 +1,28 @@
+# Grafana datasource provisioning (T-034).
+#
+# ${VAR} placeholders are expanded by Grafana itself from the container
+# environment (docker-compose.yml passes POSTGRES_DB and GRAFANA_RO_PASSWORD)
+# — no secrets live in this file. grafana_ro is a SELECT-only role over the
+# observability tables (db/versions/003_grafana_ro.py): anonymous viewers can
+# reach the datasource through the dashboards, so the DB role is the boundary.
+apiVersion: 1
+
+datasources:
+  - name: LedgerLens Postgres
+    uid: ledgerlens-postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: grafana_ro
+    isDefault: true
+    editable: false
+    jsonData:
+      database: ${POSTGRES_DB}
+      sslmode: disable
+      maxOpenConns: 4
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1500
+      timescaledb: false
+    secureJsonData:
+      password: ${GRAFANA_RO_PASSWORD}

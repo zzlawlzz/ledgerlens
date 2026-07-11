@@ -1,0 +1,16 @@
+# Grafana dashboard provider (T-034): loads every JSON file from the mounted
+# ./observability/dashboards directory into the "LedgerLens" folder and keeps
+# them in sync with the repo (updateIntervalSeconds re-reads changed files).
+apiVersion: 1
+
+providers:
+  - name: ledgerlens
+    orgId: 1
+    folder: LedgerLens
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

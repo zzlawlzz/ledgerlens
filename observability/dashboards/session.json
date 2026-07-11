@@ -1,0 +1,334 @@
+{
+  "id": null,
+  "uid": "ledgerlens-session",
+  "title": "LedgerLens / Session drill-down",
+  "description": "Single-run forensics (T-034): step timeline, LLM and tool calls, cost, final status and the guardrail verdict for one run_id.",
+  "tags": ["ledgerlens", "session"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "editable": true,
+  "graphTooltip": 0,
+  "time": {"from": "now-7d", "to": "now"},
+  "annotations": {"list": []},
+  "templating": {
+    "list": [
+      {
+        "name": "run_id",
+        "label": "Run",
+        "type": "query",
+        "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+        "query": "SELECT to_char(created_at, 'MM-DD HH24:MI') || ' | ' || status || ' | ' || left(question, 60) AS __text, id::text AS __value FROM runs ORDER BY created_at DESC LIMIT 200",
+        "definition": "SELECT to_char(created_at, 'MM-DD HH24:MI') || ' | ' || status || ' | ' || left(question, 60) AS __text, id::text AS __value FROM runs ORDER BY created_at DESC LIMIT 200",
+        "current": {},
+        "options": [],
+        "refresh": 2,
+        "regex": "",
+        "sort": 0,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Status",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]},
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "succeeded": {"color": "green", "index": 0},
+                "failed": {"color": "red", "index": 1},
+                "budget_exceeded": {"color": "orange", "index": 2},
+                "running": {"color": "blue", "index": 3}
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": "/.*/"},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT status FROM runs WHERE id = '$run_id'"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total cost",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT cost_usd::float8 AS cost_usd FROM runs WHERE id = '$run_id'"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latency",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT latency_ms FROM runs WHERE id = '$run_id'"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Tokens in / out",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT tokens_in, tokens_out FROM runs WHERE id = '$run_id'"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Guardrail decision",
+      "description": "Action taken by the non-advice guardrail node: pass | resynthesize | refuse (steps.output for node = 'guardrail').",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 4, "w": 8, "x": 16, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]},
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "pass": {"color": "green", "index": 0},
+                "resynthesize": {"color": "orange", "index": 1},
+                "refuse": {"color": "red", "index": 2}
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": "/.*/"},
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(output->>'action', 'n/a') AS action, coalesce(output->>'triggered', 'n/a') AS triggered FROM steps WHERE run_id = '$run_id' AND node = 'guardrail' ORDER BY started_at DESC LIMIT 1"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Question / answer",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 4},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto", "wrapText": true}}},
+        "overrides": []
+      },
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT question, left(coalesce(answer, '(no answer)'), 1000) AS answer, coalesce(error, '') AS error, mode, created_at, finished_at FROM runs WHERE id = '$run_id'"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Step timeline",
+      "description": "One row per orchestrator step (planner / worker / synthesizer / guardrail), in execution order.",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 11},
+      "fieldConfig": {
+        "defaults": {"unit": "none", "custom": {"align": "auto"}},
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "duration_ms"},
+            "properties": [{"id": "unit", "value": "ms"}]
+          }
+        ]
+      },
+      "options": {"showHeader": true, "sortBy": [{"displayName": "started_at", "desc": false}]},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at, finished_at, round(extract(epoch FROM (coalesce(finished_at, now()) - started_at)) * 1000)::bigint AS duration_ms, node, coalesce(worker_node, '') AS worker_node, status, left(coalesce(goal, ''), 120) AS goal, left(coalesce(error, ''), 200) AS error FROM steps WHERE run_id = '$run_id' ORDER BY started_at"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "LLM calls",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 20},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "auto"}},
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "cost_usd"},
+            "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 5}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "latency_ms"},
+            "properties": [{"id": "unit", "value": "ms"}]
+          }
+        ]
+      },
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT created_at, task_class, provider, model, tokens_in, tokens_out, cost_usd::float8 AS cost_usd, latency_ms, fallback_used, left(coalesce(error, ''), 200) AS error FROM llm_calls WHERE run_id = '$run_id' ORDER BY created_at"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Tool calls",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 29},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "auto"}},
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "latency_ms"},
+            "properties": [{"id": "unit", "value": "ms"}]
+          }
+        ]
+      },
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT created_at, tool, status, latency_ms, left(arguments::text, 200) AS arguments, left(coalesce(result_preview, ''), 200) AS result_preview FROM tool_calls WHERE run_id = '$run_id' ORDER BY created_at"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Guardrail verdict (steps.node = 'guardrail')",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 38},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto", "wrapText": true}}},
+        "overrides": []
+      },
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at, finished_at, status, output->>'triggered' AS triggered, output->>'action' AS action, output->>'spans' AS spans FROM steps WHERE run_id = '$run_id' AND node = 'guardrail' ORDER BY started_at DESC"
+        }
+      ]
+    }
+  ]
+}
