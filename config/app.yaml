@@ -31,3 +31,15 @@ examples:
   - kind: self_correction
     en: "What was Apple's profit in fiscal year 2025?"
     ru: "Какая прибыль была у Apple в 2025 финансовом году?"
+
+# RU-mode examples (T-032; served by /api/examples when APP_MODE=ru).
+examples_ru:
+  - kind: sql
+    en: "How did Sberbank's share price change over the last year?"
+    ru: "Как менялась цена акции Сбербанка за последний год?"
+  - kind: sql
+    en: "What is the current market capitalization of Gazprom?"
+    ru: "Какая текущая рыночная капитализация Газпрома?"
+  - kind: multi_step
+    en: "Compare the share price dynamics of SBER and LKOH over 3 years."
+    ru: "Сравни динамику цен акций SBER и LKOH за 3 года."

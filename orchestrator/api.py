@@ -320,9 +320,11 @@ async def agui(body: RunAgentInput) -> StreamingResponse:
 
 @app.get("/api/examples")
 async def examples() -> JSONResponse:
-    """Example questions for the UI buttons (T-024), both locales."""
+    """Example questions for the UI buttons (T-024), both locales; the RU
+    mode serves its own set (T-032)."""
     app_config = load_yaml_config("app")
-    return JSONResponse({"examples": app_config.get("examples", [])})
+    key = "examples_ru" if get_settings().app_mode == "ru" else "examples"
+    return JSONResponse({"examples": app_config.get(key, [])})
 
 
 @app.get("/healthz")
