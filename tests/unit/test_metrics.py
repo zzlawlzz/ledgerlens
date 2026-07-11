@@ -23,10 +23,14 @@ EXPECTED_CANONICAL_V1 = {
     "shares_outstanding",
 }
 
+# Market metrics added by the MOEX adapter (T-032, standard='MOEX'): they come
+# from ISS market data, not XBRL, so their gaap_tags chains are empty.
+EXPECTED_MARKET_METRICS = {"close_price", "market_cap"}
 
-def test_dictionary_matches_v1_snapshot() -> None:
-    assert set(METRICS) == EXPECTED_CANONICAL_V1
-    assert len(METRICS) == 16
+
+def test_dictionary_matches_snapshot() -> None:
+    assert set(METRICS) == EXPECTED_CANONICAL_V1 | EXPECTED_MARKET_METRICS
+    assert len(METRICS) == 18
 
 
 def test_every_metric_is_fully_described() -> None:
@@ -34,7 +38,10 @@ def test_every_metric_is_fully_described() -> None:
         assert metric.canonical == name
         assert metric.description
         assert metric.unit_hint in ("currency", "currency/share", "shares")
-        assert metric.gaap_tags, f"{name} has no GAAP tag chain"
+        if name in EXPECTED_MARKET_METRICS:
+            assert not metric.gaap_tags, f"market metric {name} must not claim GAAP tags"
+        else:
+            assert metric.gaap_tags, f"{name} has no GAAP tag chain"
 
 
 def test_gaap_tag_chains_preserve_priority_order() -> None:
@@ -48,4 +55,4 @@ def test_gaap_tag_chains_preserve_priority_order() -> None:
 
 
 def test_metric_names_helper() -> None:
-    assert set(metric_names()) == EXPECTED_CANONICAL_V1
+    assert set(metric_names()) == EXPECTED_CANONICAL_V1 | EXPECTED_MARKET_METRICS

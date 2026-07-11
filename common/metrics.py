@@ -146,6 +146,23 @@ _METRIC_DEFS: tuple[MetricDef, ...] = (
         ),
         rsbu_codes=(),
     ),
+    # Market metrics (T-032): sourced from MOEX ISS with standard='MOEX', not
+    # from XBRL — gaap_tags stay empty; the ISS field names (CLOSE,
+    # ISSUECAPITALIZATION) live in adapters/moex/adapter.py.
+    MetricDef(
+        canonical="close_price",
+        description="Closing price of one share for a trading day (MOEX ISS market data)",
+        unit_hint="currency/share",
+        gaap_tags=(),
+        rsbu_codes=(),
+    ),
+    MetricDef(
+        canonical="market_cap",
+        description="Market capitalization snapshot (MOEX ISS market data)",
+        unit_hint="currency",
+        gaap_tags=(),
+        rsbu_codes=(),
+    ),
 )
 
 METRICS: dict[str, MetricDef] = {metric.canonical: metric for metric in _METRIC_DEFS}
