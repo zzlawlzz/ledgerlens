@@ -54,8 +54,11 @@ async def rag_search(
 ) -> dict[str, Any]:
     """Hybrid search over narrative 10-K sections (risk_factors, mdna).
     Returns text chunks with citations. Optional filters: tickers,
-    form_types, sections, period_from/period_to (ISO dates). If no_results
-    is true, honestly say the data is not loaded."""
+    form_types, sections, period_from/period_to (ISO dates). Put the company
+    into filters.tickers and use topical keywords as the query (filings say
+    "we", not the company name): query="intense competition pricing pressure"
+    + filters={"tickers": ["AMZN"]}, not query="Amazon competition". If
+    no_results is true, honestly say the data is not loaded."""
     if ctx is not None:
         try:
             request = ctx.request_context.request

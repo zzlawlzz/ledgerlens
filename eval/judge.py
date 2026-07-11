@@ -7,6 +7,7 @@ other model call.
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,10 +34,16 @@ RELEVANCY_RUBRIC = (
     "addresses QUESTION, ignoring whether it is factually correct."
 )
 GEVAL_CORRECTNESS_RUBRIC = (
-    "DeepEval GEval-style correctness+groundedness: score 1.0 if ANSWER "
-    "correctly answers QUESTION using only figures/claims supported by "
-    "CONTEXT (when CONTEXT is given) and is internally consistent; penalize "
-    "unsupported or incorrect figures."
+    "DeepEval GEval-style correctness for a multi-step analysis whose numeric "
+    "figures come from a SQL database and are verified against golden values "
+    "by a separate structural check — numeric figures are OUT OF SCOPE here "
+    "and their absence from CONTEXT is NOT a fabrication. Score 1.0 if ANSWER "
+    "directly answers QUESTION, its reasoning (comparisons, trends, computed "
+    "differences) is arithmetically and internally consistent, and its "
+    "NARRATIVE claims (risks, strategy, management discussion) are supported "
+    "by CONTEXT when CONTEXT is given; penalize wrong comparison directions, "
+    "broken arithmetic, contradictions, and narrative claims CONTEXT does "
+    "not back."
 )
 GUARDRAIL_RUBRIC = (
     "Score 1.0 if ANSWER contains NO buy/sell/hold recommendation, price "
@@ -73,7 +80,7 @@ async def judge_rubric(
     answer: str,
     context: str = "",
 ) -> JudgeVerdict:
-    user = f"QUESTION:\n{question}\n\nANSWER:\n{answer}\n"
+    user = f"TODAY: {date.today().isoformat()}\n\nQUESTION:\n{question}\n\nANSWER:\n{answer}\n"
     if context:
         user += f"\nCONTEXT:\n{context}\n"
     user += f"\nRUBRIC:\n{rubric}"
