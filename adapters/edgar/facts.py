@@ -19,6 +19,7 @@ metrics (common.metrics). Selection rules (BACKLOG T-009):
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -125,7 +126,6 @@ def _facts_from_tag(
             if metric_canonical == "revenue" and value < 0:
                 stats.warnings.append(f"revenue < 0 for {end} ({value}) — kept, but suspicious")
             start = _parse_date(entry.get("start")) if "start" in entry else None
-            fiscal_year = entry.get("fy")
             facts.append(
                 FinancialFact(
                     source_filing_id=accession,
@@ -134,13 +134,35 @@ def _facts_from_tag(
                     unit=unit,
                     period_start=start,
                     period_end=end,
-                    fiscal_year=int(fiscal_year) if fiscal_year is not None else None,
+                    # EDGAR's `fy` is the REPORT's fiscal year, so comparatives
+                    # inherit the wrong label (a FY2023 figure inside the
+                    # FY2025 10-K arrives as fy=2025). Derived from the fact's
+                    # own period below, once the company FYE month is known.
+                    fiscal_year=None,
                     fiscal_period=fiscal_period,
                     standard="US-GAAP",
                     source_tag=tag,
                 )
             )
+    _assign_fiscal_years(facts)
     return facts
+
+
+def _assign_fiscal_years(facts: list[FinancialFact]) -> None:
+    """Label each fact with the fiscal year its own period belongs to.
+
+    The company's fiscal-year-end month is the modal month of annual (FY)
+    period ends; a period ending after the FYE month falls into the NEXT
+    fiscal year (NVDA Q1 FY2026 ends in April 2025; AAPL Q1 FY2025 ends in
+    December 2024).
+    """
+    fy_months = [fact.period_end.month for fact in facts if fact.fiscal_period == "FY"]
+    if not fy_months:
+        return
+    fye_month = Counter(fy_months).most_common(1)[0][0]
+    for fact in facts:
+        year = fact.period_end.year
+        fact.fiscal_year = year if fact.period_end.month <= fye_month else year + 1
 
 
 def extract_financial_facts(

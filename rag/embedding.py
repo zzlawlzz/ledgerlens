@@ -57,7 +57,9 @@ class ChunkEmbedder:
         distinction fall back to plain ``embed``.
         """
         method = getattr(self._dense, f"{kind}_embed", None) or self._dense.embed
-        vectors = [vector.tolist() for vector in method(texts)]
+        # Small batches: 800-token chunks at the default batch size blow the
+        # ONNX arena past 1GB and OOM when the compose stack shares the RAM.
+        vectors = [vector.tolist() for vector in method(texts, batch_size=8)]
         if vectors and len(vectors[0]) != self.dim:
             raise ValueError(
                 f"dense model {self.dense_model_name} returned dim {len(vectors[0])}, "

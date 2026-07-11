@@ -106,7 +106,7 @@ async def test_worker_self_corrects_unknown_metric_term() -> None:
 
 
 async def test_orchestrator_replans_on_missing_company() -> None:
-    """Scenario (b): Tesla is not ingested -> no_data -> replan -> honest boundary."""
+    """Scenario (b): Netflix is not ingested -> no_data -> replan -> honest boundary."""
     if not await _corpus_ready():
         pytest.skip("demo corpus not ingested")
     ensure_stream_infrastructure()
@@ -120,7 +120,7 @@ async def test_orchestrator_replans_on_missing_company() -> None:
             "/api/chat",
             json={
                 "question": (
-                    "Compare the fiscal 2025 revenue of Apple and Tesla using the loaded data."
+                    "Compare the fiscal 2025 revenue of Apple and Netflix using the loaded data."
                 )
             },
         ) as response:
@@ -135,7 +135,7 @@ async def test_orchestrator_replans_on_missing_company() -> None:
     final = events[-1]
     assert final["event"] == "run_finished"
     answer = str(final["payload"]["answer"]).lower()
-    assert "tesla" in answer
+    assert "netflix" in answer
     # The answer states the data boundary instead of inventing Tesla numbers.
     assert final["payload"]["partial"] or any(
         marker in answer

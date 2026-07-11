@@ -8,7 +8,7 @@ adapters:
 
 # Default demo watchlist (Q-09: owner default, finalize before T-028).
 watchlist:
-  us: [AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA, JPM, JNJ, XOM]
+  us: [AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA, JPM, JNJ, WMT]  # XOM dropped: 2026 holding-company reorg left its new CIK with no filing history
   ru: [SBER, GAZP, LKOH]
 
 # Example questions for the UI (T-024; both locales — Q-04). Kinds cover the
