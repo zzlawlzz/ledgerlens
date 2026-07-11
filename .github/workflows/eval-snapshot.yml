@@ -17,6 +17,14 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
+      # Shares its cache key with eval.yml (T-030): a snapshot run here
+      # primes the fastembed weights so the nightly/PR eval.yml run gets a
+      # cache hit instead of a cold ~3.5GB download inside a tight deadline.
+      - name: Cache fastembed models
+        uses: actions/cache@v4
+        with:
+          path: data/cache/fastembed
+          key: fastembed-${{ hashFiles('config/rag.yaml') }}
       - name: Prepare env
         run: |
           cp .env.example .env

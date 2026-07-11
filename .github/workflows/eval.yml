@@ -37,6 +37,31 @@ jobs:
           sed -i "s/^LOCAL_MODEL=.*/LOCAL_MODEL=/" .env
           sed -i "s/^A2A_TOKEN=.*/A2A_TOKEN=ci-a2a-token/" .env
 
+      # T-030 live finding: mcp-rag lazy-loads its ~3.5GB fastembed models on
+      # the FIRST rag_search call — on a cold runner that download blew past
+      # the worker's iteration deadline, so every narrative_rag case failed
+      # with "Could not load model ... from any source" (citation_coverage
+      # and faithfulness both read 0.0, not a RAG-quality issue). Caching the
+      # weights and warming them up on the host, before the mcp-rag container
+      # even starts, means the container's own lazy load hits a populated
+      # ./data/cache/fastembed bind mount and is instant.
+      - name: Cache fastembed models
+        uses: actions/cache@v4
+        with:
+          path: data/cache/fastembed
+          key: fastembed-${{ hashFiles('config/rag.yaml') }}
+
+      - name: Warm up embedding/reranker models
+        run: |
+          uv run python -c "
+          from rag.embedding import ChunkEmbedder
+          e = ChunkEmbedder()
+          e.embed_dense(['warmup'], kind='query')
+          e.embed_sparse(['warmup'])
+          e.rerank('warmup', ['warmup'])
+          print('fastembed models warmed up')
+          "
+
       # Demo-corpus fixture, restored once, never regenerated from EDGAR here.
       - name: Download demo snapshot
         uses: dawidd6/action-download-artifact@v6
