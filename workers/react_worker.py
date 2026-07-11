@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -274,6 +275,41 @@ def _render_task(task: WorkerTask) -> str:
     return "\n".join(parts)
 
 
+_CITATION_MARKER = re.compile(r"\[[A-Z]{1,6}\s+10-[KQ][^\]]{0,80}\]")
+_GAP_PHRASES = re.compile(
+    r"(?i)\b(no data|not (available|loaded|present|found|disclosed|in the)|"
+    r"нет данных|не (загружен|найден|раскрыт))"
+)
+_STRUCTURAL_MAX_CHARS = 90
+
+
+def _strip_ungrounded(answer: str) -> str:
+    """Deterministic grounding guard (T-041): in a cited narrative answer,
+    a factual line without a citation marker is dropped.
+
+    The LLM trim pass (_ground_check) is probabilistic and demonstrably
+    inconsistent (faithfulness 0.0 vs 0.69 between runs on the same cases);
+    this pass is the structural backstop. Kept lines: cited ones, honest
+    data-gap statements, blank lines, and short digit-free structural lines
+    (headings, intros). Fail-open: an answer with no markers at all is
+    returned untouched, and an over-aggressive cut falls back to the input.
+    """
+    if not _CITATION_MARKER.search(answer):
+        return answer
+    kept: list[str] = []
+    for line in answer.splitlines():
+        stripped = line.strip().lstrip("-*•").strip()
+        if (
+            not stripped
+            or _CITATION_MARKER.search(line)
+            or _GAP_PHRASES.search(stripped)
+            or (not re.search(r"\d", stripped) and len(stripped) <= _STRUCTURAL_MAX_CHARS)
+        ):
+            kept.append(line)
+    result = "\n".join(kept).strip()
+    return result if result else answer
+
+
 async def _ground_check(
     router: RouterClient, *, question: str, draft: str, raw_chunks: list[str]
 ) -> str:
@@ -400,6 +436,12 @@ async def run_worker_task(
                 answer = await _ground_check(
                     router_client, question=task.goal, draft=answer, raw_chunks=raw_chunks
                 )
+                if not evidence.facts:
+                    # Pure narrative answer: enforce grounding structurally on
+                    # top of the LLM trim (T-041 candidate 2). SQL-derived
+                    # answers are excluded — their figures carry no citation
+                    # markers and must not be cut.
+                    answer = _strip_ungrounded(answer)
         except TimeoutError:
             status = "budget_exceeded"
             answer = last_ai_text or (
