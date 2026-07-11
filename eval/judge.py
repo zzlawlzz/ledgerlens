@@ -19,7 +19,14 @@ FAITHFULNESS_RUBRIC = (
     "RAGAS-style faithfulness: score 1.0 if every factual claim in ANSWER is "
     "directly stated in CONTEXT, 0.0 if ANSWER states figures or facts CONTEXT "
     "does not contain. Claims not covered by CONTEXT at all (not right, not "
-    "wrong, just absent) count against the score proportionally."
+    "wrong, just absent) count against the score proportionally. Each CONTEXT "
+    "chunk is prefixed with a [TICKER FORM_TYPE PERIOD, SECTION] tag — use it "
+    "to verify claims about which company/filing/period a chunk covers (e.g. "
+    "'no Amazon content was retrieved, only Microsoft and Apple' is a "
+    "SUPPORTED claim if the tags are indeed MSFT/AAPL and none are AMZN). If "
+    "ANSWER honestly states that no relevant data was retrieved/available and "
+    "asserts no other concrete figure or fact, score 1.0 — an accurate report "
+    "of absence is faithful, not a violation."
 )
 RELEVANCY_RUBRIC = (
     "RAGAS-style answer relevancy: score how directly and completely ANSWER "

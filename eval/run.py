@@ -21,6 +21,7 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,14 +69,25 @@ JUDGE_PASS_BAR = 0.6
 CONTEXT_MAX_CHARS = 8000
 
 
+def _tag(ticker: Any, form_type: Any, period: Any, section: Any) -> str:
+    return f"[{ticker} {form_type} {period}, {section}]"
+
+
 async def _full_context(citations: list[dict[str, Any]]) -> str:
     """Full retrieved chunk text, fetched from Qdrant by chunk_id — the citation's
     ``snippet`` field is a 300-char UI preview (tools/rag/core.py:SNIPPET_CHARS),
     far short of what the worker's rag_search call actually saw. Faithfulness
     judged against the snippet alone flags true claims as unsupported just
     because the chunk got cut before the substantive sentence. Falls back to
-    the snippet if Qdrant is unreachable."""
-    ids = [str(c["chunk_id"]) for c in citations if c.get("chunk_id")]
+    the snippet if Qdrant is unreachable.
+
+    Each chunk is prefixed with its [ticker form_type period, section] tag
+    (T-041): without it the judge sees bare text and cannot verify claims
+    about *which company/period* a chunk belongs to, so an honest "only
+    Microsoft/Apple chunks came back, not Amazon" answer was scored as
+    unfaithful for lacking word-for-word support in an untagged blob."""
+    by_id = {str(c["chunk_id"]): c for c in citations if c.get("chunk_id")}
+    ids = list(by_id)
     if not ids:
         return ""
     try:
@@ -88,12 +100,27 @@ async def _full_context(citations: list[dict[str, Any]]) -> str:
             points = await client.retrieve(collection_name=COLLECTION, ids=ids, with_payload=True)
         finally:
             await client.close()
-        texts = [str(p.payload.get("text", "")) for p in points if p.payload]
+        texts = []
+        for point in points:
+            if not point.payload:
+                continue
+            tag = _tag(
+                point.payload.get("ticker"),
+                point.payload.get("form_type"),
+                point.payload.get("period_end"),
+                point.payload.get("section"),
+            )
+            texts.append(f"{tag}\n{point.payload.get('text', '')}")
         if texts:
             return "\n---\n".join(texts)[:CONTEXT_MAX_CHARS]
     except Exception:  # noqa: BLE001 — degrade to the snippet, never fail the case
         pass
-    return "\n---\n".join(str(c.get("snippet", "")) for c in citations)[:CONTEXT_MAX_CHARS]
+    texts = [
+        f"{_tag(c.get('ticker'), c.get('form_type'), c.get('period'), c.get('section'))}\n"
+        f"{c.get('snippet', '')}"
+        for c in by_id.values()
+    ]
+    return "\n---\n".join(texts)[:CONTEXT_MAX_CHARS]
 
 
 @dataclass
@@ -129,17 +156,27 @@ async def _ask(client: httpx.AsyncClient, question: str) -> tuple[dict[str, Any]
 
 
 async def _executed_steps(run_id: str | None) -> int:
+    """Count worker steps for a run. Retried via ``_db_retry`` — a transient
+    connection drop here is seen live on Windows/Docker Desktop under
+    concurrent load (asyncpg ``connection_lost`` during the TLS handshake for
+    a brand new pool connection, so ``pool_pre_ping`` does not help); left
+    unguarded this killed the whole ``asyncio.gather`` and discarded every
+    already-scored case in the run."""
     if not run_id:
         return 0
-    factory = get_session_factory()
-    async with factory() as session:
-        count = (
-            await session.execute(
-                text("SELECT count(*) FROM steps WHERE run_id = :id AND node = 'worker'"),
-                {"id": run_id},
-            )
-        ).scalar_one()
-    return int(count)
+
+    async def _query() -> int:
+        factory = get_session_factory()
+        async with factory() as session:
+            count = (
+                await session.execute(
+                    text("SELECT count(*) FROM steps WHERE run_id = :id AND node = 'worker'"),
+                    {"id": run_id},
+                )
+            ).scalar_one()
+        return int(count)
+
+    return await _db_retry(_query)
 
 
 class CostTracker:
@@ -443,61 +480,80 @@ def _blocking_violations(violations: list[str], non_blocking: list[str]) -> list
     return [v for v in violations if not any(v.startswith(f"{m}=") for m in non_blocking)]
 
 
+async def _db_retry[T](coro_fn: Callable[[], Awaitable[T]]) -> T:
+    """One retry on the same transient connection drop as ``_executed_steps``
+    — kept as a separate helper because these two calls happen after every
+    case has already been scored (i.e. after all the eval's LLM spend), so
+    losing them to a network blip is the most expensive place to lose a
+    result."""
+    try:
+        return await coro_fn()
+    except (ConnectionError, OSError):
+        await asyncio.sleep(1.0)
+        return await coro_fn()
+
+
 async def _previous_summary(profile: str) -> dict[str, Any] | None:
-    factory = get_session_factory()
-    async with factory() as session:
-        row = (
-            await session.execute(
-                text(
-                    "SELECT summary FROM eval_runs WHERE profile = :profile "
-                    "AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1"
-                ),
-                {"profile": profile},
-            )
-        ).first()
-    if row is None or row[0] is None:
-        return None
-    return dict(row[0])
+    async def _query() -> dict[str, Any] | None:
+        factory = get_session_factory()
+        async with factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT summary FROM eval_runs WHERE profile = :profile "
+                        "AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1"
+                    ),
+                    {"profile": profile},
+                )
+            ).first()
+        if row is None or row[0] is None:
+            return None
+        return dict(row[0])
+
+    return await _db_retry(_query)
 
 
 async def _persist(
     *, git_sha: str | None, profile: str, summary: dict[str, Any], results: list[CaseResult]
 ) -> int:
-    factory = get_session_factory()
-    async with factory() as session:
-        eval_run_id = (
-            await session.execute(
-                text(
-                    "INSERT INTO eval_runs (git_sha, profile, summary, finished_at) "
-                    "VALUES (:git_sha, :profile, CAST(:summary AS jsonb), now()) RETURNING id"
-                ),
-                {
-                    "git_sha": git_sha,
-                    "profile": profile,
-                    "summary": json.dumps(summary, ensure_ascii=False, default=str),
-                },
-            )
-        ).scalar_one()
-        for r in results:
-            await session.execute(
-                text(
-                    "INSERT INTO eval_results (eval_run_id, case_id, category, passed, "
-                    "scores, run_id, details) VALUES "
-                    "(:eval_run_id, :case_id, :category, :passed, CAST(:scores AS jsonb), "
-                    ":run_id, CAST(:details AS jsonb))"
-                ),
-                {
-                    "eval_run_id": eval_run_id,
-                    "case_id": r.case.id,
-                    "category": r.case.category,
-                    "passed": r.passed,
-                    "scores": json.dumps(r.scores, ensure_ascii=False, default=str),
-                    "run_id": r.run_id,
-                    "details": json.dumps(r.details, ensure_ascii=False, default=str),
-                },
-            )
-        await session.commit()
-    return int(eval_run_id)
+    async def _write() -> int:
+        factory = get_session_factory()
+        async with factory() as session:
+            eval_run_id = (
+                await session.execute(
+                    text(
+                        "INSERT INTO eval_runs (git_sha, profile, summary, finished_at) "
+                        "VALUES (:git_sha, :profile, CAST(:summary AS jsonb), now()) RETURNING id"
+                    ),
+                    {
+                        "git_sha": git_sha,
+                        "profile": profile,
+                        "summary": json.dumps(summary, ensure_ascii=False, default=str),
+                    },
+                )
+            ).scalar_one()
+            for r in results:
+                await session.execute(
+                    text(
+                        "INSERT INTO eval_results (eval_run_id, case_id, category, passed, "
+                        "scores, run_id, details) VALUES "
+                        "(:eval_run_id, :case_id, :category, :passed, CAST(:scores AS jsonb), "
+                        ":run_id, CAST(:details AS jsonb))"
+                    ),
+                    {
+                        "eval_run_id": eval_run_id,
+                        "case_id": r.case.id,
+                        "category": r.case.category,
+                        "passed": r.passed,
+                        "scores": json.dumps(r.scores, ensure_ascii=False, default=str),
+                        "run_id": r.run_id,
+                        "details": json.dumps(r.details, ensure_ascii=False, default=str),
+                    },
+                )
+            await session.commit()
+        return int(eval_run_id)
+
+    return await _db_retry(_write)
 
 
 def _write_report(
@@ -599,7 +655,14 @@ async def run_eval(profile: str, base_url: str, concurrency: int = 2) -> int:
         async def _bounded(case: GoldenCase) -> CaseResult:
             async with semaphore:
                 started = time.perf_counter()
-                result = await _score_case(client, router, tracker, case)
+                try:
+                    result = await _score_case(client, router, tracker, case)
+                except Exception as exc:  # noqa: BLE001 — one case's crash must not
+                    # discard every other case's already-computed score and the
+                    # report along with it (a live infra blip did exactly that).
+                    result = CaseResult(
+                        case=case, passed=False, details={"error": f"{type(exc).__name__}: {exc}"}
+                    )
                 elapsed = round(time.perf_counter() - started, 1)
                 print(
                     f"  [{'PASS' if result.passed else 'FAIL'}] {case.id} "
@@ -613,10 +676,13 @@ async def run_eval(profile: str, base_url: str, concurrency: int = 2) -> int:
     summary["total_cost_usd"] = round(summary["total_cost_usd"] + tracker.spent_usd, 6)
     violations = _check_thresholds(summary, thresholds)
 
-    previous = await _previous_summary(profile)
-    eval_run_id = await _persist(
-        git_sha=_git_sha(), profile=profile, summary=summary, results=list(results)
-    )
+    # By this point every case is scored and every LLM dollar is already
+    # spent — a DB hiccup from here on must degrade, not discard the run.
+    try:
+        previous = await _previous_summary(profile)
+    except (ConnectionError, OSError) as exc:
+        print(f"warning: could not fetch previous run for baseline diff: {exc}")
+        previous = None
 
     ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     out_dir = REPORTS_DIR / ts
@@ -629,6 +695,13 @@ async def run_eval(profile: str, base_url: str, concurrency: int = 2) -> int:
         violations=violations,
         results=list(results),
     )
+    try:
+        eval_run_id: int | None = await _persist(
+            git_sha=_git_sha(), profile=profile, summary=summary, results=list(results)
+        )
+    except (ConnectionError, OSError) as exc:
+        print(f"warning: could not persist eval run to DB: {exc}")
+        eval_run_id = None
     print(f"\neval_run_id={eval_run_id} report={out_dir}")
     print(json.dumps(summary, indent=2, default=str))
     blocking = _blocking_violations(violations, non_blocking)

@@ -101,4 +101,4 @@ async def test_full_context_falls_back_to_snippet_when_qdrant_unreachable() -> N
     unreachable it must still degrade to the snippet rather than raise."""
     citations = [{"chunk_id": "does-not-exist-in-any-collection", "snippet": "fallback text"}]
     context = await _full_context(citations)
-    assert context == "fallback text"
+    assert context == "[None None None, None]\nfallback text"
