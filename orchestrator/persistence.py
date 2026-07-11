@@ -163,7 +163,11 @@ def make_db_subscriber() -> Subscriber:
         if event.event == "tool_call_finished":
             key = (event.run_id, str(event.payload.get("tool")))
             started_ts = pending_tool_started.pop(key, None)
-            latency_ms = int((event.ts - started_ts) * 1000) if started_ts else None
+            payload_latency = event.payload.get("latency_ms")
+            if payload_latency is not None:
+                latency_ms: int | None = int(payload_latency)
+            else:
+                latency_ms = int((event.ts - started_ts) * 1000) if started_ts else None
             factory = get_session_factory()
             async with factory() as session:
                 await session.execute(

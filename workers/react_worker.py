@@ -26,6 +26,7 @@ from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import create_react_agent
 
 from common.agents import WorkerEvidence, WorkerResult, WorkerTask, WorkerUsage
+from common.config import load_yaml_config
 from common.logging import bind_run_context, get_logger, reset_run_context
 from common.tracing import TraceBus, TraceEvent
 from model_router.router import RouterChatModel, RouterClient
@@ -47,6 +48,80 @@ def load_worker_prompt() -> str:
         rest = rest.partition("---")[2]
         return rest.strip()
     return text.strip()
+
+
+_MCP_SERVER_TOOLS = {
+    "sql": ("sql_query", "schema_introspect"),
+    "rag": ("rag_search",),
+}
+
+
+def _tool_endpoints() -> dict[str, str]:
+    """config/workers.yaml -> tool_endpoints; 'local' means lib mode (T-027)."""
+    try:
+        raw = load_yaml_config("workers").get("tool_endpoints", {})
+    except Exception:  # noqa: BLE001 — config problems must not kill the worker
+        return {}
+    return {str(k): str(v) for k, v in raw.items()}
+
+
+async def _load_mcp_impls(endpoints: dict[str, str], run_id: str) -> dict[str, ToolImpl]:
+    """MCP-backed tool impls (T-027); a dead server degrades to observation
+    errors on its tools instead of crashing the worker."""
+    import json as json_module
+
+    log = get_logger(node="worker")
+    impls: dict[str, ToolImpl] = {}
+    for server_name, url in endpoints.items():
+        if not url or url == "local":
+            continue
+        tool_names = _MCP_SERVER_TOOLS.get(server_name, ())
+        try:
+            from langchain_mcp_adapters.client import MultiServerMCPClient
+
+            client = MultiServerMCPClient(
+                {
+                    server_name: {
+                        "transport": "streamable_http",
+                        "url": url,
+                        "headers": {"X-Run-Id": run_id},
+                    }
+                }
+            )
+            tools = await client.get_tools()
+        except Exception as exc:  # noqa: BLE001 — server down: observation errors
+            log.warning("mcp_server_unavailable", server=server_name, error=str(exc)[:200])
+            for name in tool_names:
+
+                async def _down(_error: str = str(exc)[:200], **_: Any) -> dict[str, Any]:
+                    return {
+                        "error": f"tool service unavailable: {_error}",
+                        "retryable": True,
+                    }
+
+                impls[name] = _down
+            continue
+        for tool in tools:
+
+            async def _impl(_tool: Any = tool, **kwargs: Any) -> dict[str, Any]:
+                raw = await _tool.ainvoke(kwargs)
+                if isinstance(raw, dict):
+                    return raw
+                if isinstance(raw, list):  # adapters may return content blocks
+                    raw = "".join(
+                        str(part.get("text", ""))
+                        for part in raw
+                        if isinstance(part, dict) and part.get("type") == "text"
+                    )
+                try:
+                    parsed = json_module.loads(raw)
+                except (TypeError, ValueError):
+                    return {"error": f"malformed MCP result: {str(raw)[:200]}"}
+                return parsed if isinstance(parsed, dict) else {"result": parsed}
+
+            impls[str(tool.name)] = _impl
+        log.info("mcp_tools_loaded", server=server_name, tools=[t.name for t in tools])
+    return impls
 
 
 def _default_tool_impls() -> dict[str, ToolImpl]:
@@ -77,9 +152,13 @@ def _build_tools(
     tools: list[StructuredTool] = []
 
     async def _traced_call(tool_name: str, arguments: dict[str, Any]) -> str:
+        import time
+
         usage.tool_calls += 1
         await bus.publish("tool_call_started", {"tool": tool_name, "arguments": arguments})
+        started = time.perf_counter()
         result = await impls[tool_name](**arguments)
+        latency_ms = int((time.perf_counter() - started) * 1000)
         is_error = isinstance(result, dict) and "error" in result
         payload = json.dumps(result, ensure_ascii=False, default=str)
         await bus.publish(
@@ -87,6 +166,9 @@ def _build_tools(
             {
                 "tool": tool_name,
                 "status": "error" if is_error else "ok",
+                # Measured at the call site: survives trace relay over A2A,
+                # includes the MCP transport (T-027).
+                "latency_ms": latency_ms,
                 "preview": payload[:PREVIEW_CHARS],
             },
         )
@@ -213,7 +295,10 @@ async def run_worker_task(
         chat_model: BaseChatModel = model or RouterChatModel(
             task_class="reason", router=RouterClient(trace_bus=bus)
         )
-        impls = {**_default_tool_impls(), **(tool_impls or {})}
+        mcp_impls = (
+            await _load_mcp_impls(_tool_endpoints(), task.run_id) if tool_impls is None else {}
+        )
+        impls = {**_default_tool_impls(), **mcp_impls, **(tool_impls or {})}
         tools = _build_tools(task, impls, bus, usage, evidence)
         agent = create_react_agent(chat_model, tools, prompt=load_worker_prompt())
         # We enforce max_iterations ourselves (langgraph's prebuilt agent ends

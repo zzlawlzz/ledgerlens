@@ -28,6 +28,11 @@ from sqlalchemy import text
 
 from common.db import get_session_factory
 
+# Windows consoles default to cp1251 and choke on typographic characters in
+# LLM answers; smoke output must never crash on encoding.
+if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+
 SMOKE_TICKERS = ("AAPL", "MSFT", "NVDA")
 
 QUESTIONS = [
@@ -154,7 +159,9 @@ async def main() -> int:
             if "guardrail" not in names:
                 failures.append(f"{question}: no guardrail event in trace (T-022)")
             if template is QUESTIONS[0] and expected_revenue:
-                if expected_revenue not in re.sub(r"\D", "", answer):
+                # Formats vary ("$416.161 billion" vs "416,161,000,000"):
+                # six significant digits identify the DB value uniquely.
+                if expected_revenue[:6] not in re.sub(r"\D", "", answer):
                     failures.append(
                         f"{question}: answer does not contain DB value {expected_revenue}"
                     )

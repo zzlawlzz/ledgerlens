@@ -85,6 +85,49 @@ services:
       retries: 12
     restart: unless-stopped
 
+  # MCP tool servers (T-027): the worker loads tools over MCP; behaviour is
+  # identical to lib mode, only the transport changes.
+  mcp-sql:
+    build: .
+    entrypoint: ["python", "-m", "tools.sql.server"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+    ports:
+      - "8765:8765"  # host access for dev tests / MCP inspector
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/mcp_ping.py", "http://127.0.0.1:8765/mcp"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  mcp-rag:
+    build: .
+    entrypoint: ["python", "-m", "tools.rag.server"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      - ./data/cache/fastembed:/app/data/cache/fastembed
+    ports:
+      - "8766:8766"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/mcp_ping.py", "http://127.0.0.1:8766/mcp"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
   # ReAct worker as a separate A2A service (T-021): the orchestrator talks to
   # it only over the A2A protocol; a second node (T-031) is one more entry in
   # config/workers.yaml, no code changes.
@@ -99,6 +142,8 @@ services:
       QDRANT_URL: http://qdrant:6333
       WORKER_NODE_NAME: local
       WORKER_BASE_URL: http://worker:8081
+      MCP_SQL_URL: http://mcp-sql:8765/mcp
+      MCP_RAG_URL: http://mcp-rag:8766/mcp
     ports:
       - "8081:8081"  # host access for dev tests (401/card checks)
     volumes:
