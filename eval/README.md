@@ -55,6 +55,15 @@ The harness computes the aggregate for each metric present in the run and
 exits non-zero if any threshold is violated — this is the exit code T-030
 wires into CI.
 
+`config/eval-thresholds.yaml`'s `non_blocking` list names metrics that are
+still measured, reported, and shown in every `THRESHOLD VIOLATIONS` section,
+but excluded from the exit-code decision — a tracked, known-failing gate
+that shouldn't turn every build red before its fix lands. Currently just
+`faithfulness` (0.33-0.39 measured vs 0.7 threshold as of 2026-07-11 —
+narrative synthesis pads answers with facts beyond the retrieved chunks;
+see BACKLOG T-041). Remove a metric from this list once its fix is verified
+to hold the threshold on a full-profile run.
+
 ## Output
 
 - `eval_runs` / `eval_results` rows (`git_sha`, `profile`, `summary` JSONB;

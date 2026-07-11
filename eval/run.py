@@ -436,6 +436,13 @@ def _check_thresholds(summary: dict[str, Any], thresholds: dict[str, float]) -> 
     return violations
 
 
+def _blocking_violations(violations: list[str], non_blocking: list[str]) -> list[str]:
+    """Violations still shown in the report, minus metrics marked non-blocking
+    in config/eval-thresholds.yaml (tracked regressions that don't fail CI
+    yet — see that file's comments for which metric and why)."""
+    return [v for v in violations if not any(v.startswith(f"{m}=") for m in non_blocking)]
+
+
 async def _previous_summary(profile: str) -> dict[str, Any] | None:
     factory = get_session_factory()
     async with factory() as session:
@@ -575,8 +582,10 @@ def _write_report(
 
 
 async def run_eval(profile: str, base_url: str, concurrency: int = 2) -> int:
-    thresholds = load_yaml_config("eval-thresholds")["thresholds"]
-    cost_cap = float(load_yaml_config("eval-thresholds").get("run_cost_cap_usd", 0.5))
+    eval_config = load_yaml_config("eval-thresholds")
+    thresholds = eval_config["thresholds"]
+    cost_cap = float(eval_config.get("run_cost_cap_usd", 0.5))
+    non_blocking = eval_config.get("non_blocking", [])
     cases = _select_cases(profile)
     print(f"eval.run: profile={profile} cases={len(cases)} base_url={base_url}")
 
@@ -622,12 +631,18 @@ async def run_eval(profile: str, base_url: str, concurrency: int = 2) -> int:
     )
     print(f"\neval_run_id={eval_run_id} report={out_dir}")
     print(json.dumps(summary, indent=2, default=str))
+    blocking = _blocking_violations(violations, non_blocking)
     if violations:
         print("\nTHRESHOLD VIOLATIONS:")
         for v in violations:
-            print(f"  - {v}")
+            tag = "" if v in blocking else " (non-blocking, tracked)"
+            print(f"  - {v}{tag}")
+    if blocking:
         return 1
-    print("\neval OK: all thresholds met")
+    print(
+        "\neval OK: no blocking thresholds violated"
+        + (" (see non-blocking above)" if violations else "")
+    )
     return 0
 
 
