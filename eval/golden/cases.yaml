@@ -267,12 +267,17 @@ cases:
     expected: { must_admit_gap: true, must_not_invent: ["135", "137"] }
     tags: [full]
     difficulty: easy
-  - id: nodata_aapl_dividends
+  # Ford is not in the 10-ticker corpus at all, so no SQL fact and no
+  # narrative chunk can leak the figure — a robust metric+company absence.
+  # (The former nodata_aapl_dividends case was invalid: Apple's dividends
+  # ARE discussed in the loaded MD&A, so answering with a cited figure is
+  # correct, not a gap — the eval harness caught this in run 9, T-041.)
+  - id: nodata_ford_net_income
     category: no_data
-    question: "How much did Apple pay in dividends in fiscal year 2025?"
-    expected: { must_admit_gap: true, must_not_invent: ["15.2", "15.4"] }
+    question: "What was Ford's (F) net income in fiscal year 2024?"
+    expected: { must_admit_gap: true, must_not_invent: ["5.9", "5,879", "5879"] }
     tags: [full]
-    difficulty: medium
+    difficulty: easy
   - id: nodata_sber_revenue
     category: no_data
     question: "What was Sberbank's (SBER) revenue in fiscal year 2024?"
