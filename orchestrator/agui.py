@@ -44,6 +44,11 @@ from common.tracing import TraceEvent
 
 ANSWER_CHUNK_CHARS = 160
 
+# SSE comment line (starts with ':') — ignored by every SSE client, including
+# @ag-ui/client, but keeps an otherwise-idle connection warm through proxy
+# idle timeouts (Cloudflare Tunnel ~100 s). See T-036 §4.
+SSE_HEARTBEAT = ": keep-alive\n\n"
+
 
 class TraceToAgUiAdapter:
     """Stateful translator: one instance per run (tracks tool-call ids)."""
@@ -164,12 +169,20 @@ def extract_question(body: RunAgentInput) -> str:
 
 async def stream_agui_run(
     body: RunAgentInput,
-    trace_queue: AsyncIterator[TraceEvent],
+    trace_queue: AsyncIterator[TraceEvent | None],
 ) -> AsyncIterator[str]:
-    """TraceEvents -> encoded AG-UI SSE lines (terminates on run end)."""
+    """TraceEvents -> encoded AG-UI SSE lines (terminates on run end).
+
+    A ``None`` from ``trace_queue`` is a heartbeat tick (the orchestrator has
+    been silent longer than the keep-alive interval): emit an SSE comment line
+    so an idle stream survives proxy timeouts (T-036 §4 / Cloudflare Tunnel).
+    """
     encoder = EventEncoder()
     adapter = TraceToAgUiAdapter(body.thread_id, body.run_id)
     async for trace_event in trace_queue:
+        if trace_event is None:
+            yield SSE_HEARTBEAT
+            continue
         for agui_event in adapter.translate(trace_event):
             yield encoder.encode(agui_event)
         if trace_event.event in ("run_finished", "run_error"):

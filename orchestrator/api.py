@@ -29,7 +29,7 @@ from common.config import get_settings, load_yaml_config
 from common.db import get_session_factory
 from common.logging import bind_run_context, configure_logging, get_logger, reset_run_context
 from common.tracing import Subscriber, TraceBus, TraceEvent, make_log_subscriber
-from orchestrator.agui import extract_question, stream_agui_run
+from orchestrator.agui import SSE_HEARTBEAT, extract_question, stream_agui_run
 from orchestrator.demo_limits import DemoLimiter, DemoLimitError, build_demo_limiter
 from orchestrator.graph import Orchestrator
 from orchestrator.monitor_api import monitor_router
@@ -48,6 +48,10 @@ from orchestrator.worker_client import (
 
 TRACE_BUS = TraceBus()
 STREAM_QUEUE_MAX = 1000
+# Emit an SSE keep-alive if the orchestrator produces no event for this long, so
+# a stream that is idle during a slow step survives proxy idle timeouts. Must
+# stay ≤ 15 s (T-036 §4; Cloudflare Tunnel drops idle connections ~100 s).
+SSE_HEARTBEAT_INTERVAL_S = 10.0
 
 _infrastructure_ready = False
 
@@ -331,12 +335,45 @@ def _subscribe_run_events(run_id: str) -> tuple[asyncio.Queue[TraceEvent], Subsc
     return queue, _enqueue
 
 
+def _sse_headers(run_id: object) -> dict[str, str]:
+    """Response headers for an SSE stream.
+
+    ``X-Accel-Buffering: no`` disables response buffering at the app boundary
+    itself (honoured by nginx and other reverse proxies), so streaming works
+    even without the location-level nginx tuning — portable proxy-independent
+    buffering-off required by T-036 §4.
+    """
+    return {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "X-Run-Id": str(run_id),
+    }
+
+
+async def _iter_with_heartbeat(
+    queue: asyncio.Queue[TraceEvent],
+) -> AsyncIterator[TraceEvent | None]:
+    """Yield queued trace events; yield ``None`` as a heartbeat tick when the
+    orchestrator has been silent for ``SSE_HEARTBEAT_INTERVAL_S`` (T-036 §4).
+
+    ``wait_for`` cancels the pending ``get`` cleanly on timeout, so no event is
+    consumed or lost — the next iteration re-awaits the same queue.
+    """
+    while True:
+        try:
+            yield await asyncio.wait_for(queue.get(), SSE_HEARTBEAT_INTERVAL_S)
+        except TimeoutError:
+            yield None
+
+
 async def _drain_events(
     queue: asyncio.Queue[TraceEvent], subscriber: Subscriber
 ) -> AsyncIterator[str]:
     try:
-        while True:
-            event = await queue.get()
+        async for event in _iter_with_heartbeat(queue):
+            if event is None:
+                yield SSE_HEARTBEAT
+                continue
             yield f"data: {json.dumps(event.as_dict(), ensure_ascii=False, default=str)}\n\n"
             if event.event in ("run_finished", "run_error"):
                 return
@@ -358,7 +395,7 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
     return StreamingResponse(
         _drain_events(queue, subscriber),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Run-Id": str(run_id)},
+        headers=_sse_headers(run_id),
     )
 
 
@@ -384,13 +421,9 @@ async def agui(body: RunAgentInput, http_request: Request) -> StreamingResponse:
     request = ChatRequest(question=question, session_id=body.thread_id)
     asyncio.create_task(_execute_run(run_id, request))
 
-    async def _trace_events() -> AsyncIterator[TraceEvent]:
-        while True:
-            yield await queue.get()
-
     async def _stream() -> AsyncIterator[str]:
         try:
-            async for chunk in stream_agui_run(body, _trace_events()):
+            async for chunk in stream_agui_run(body, _iter_with_heartbeat(queue)):
                 yield chunk
         finally:
             TRACE_BUS.unsubscribe(subscriber)
@@ -398,7 +431,7 @@ async def agui(body: RunAgentInput, http_request: Request) -> StreamingResponse:
     return StreamingResponse(
         _stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Run-Id": str(run_id)},
+        headers=_sse_headers(run_id),
     )
 
 
