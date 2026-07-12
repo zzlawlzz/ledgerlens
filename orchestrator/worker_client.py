@@ -8,15 +8,47 @@ A2A, so the dispatcher cannot tell local from remote.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 from abc import ABC, abstractmethod
+from urllib.parse import urlparse
 
 from common.agents import WorkerResult, WorkerTask
-from common.errors import ToolError
+from common.errors import ConfigError, ToolError
 from common.logging import get_logger
 from common.tracing import TraceBus
 from workers.react_worker import run_worker_task
 
 A2A_EXTRA_TIMEOUT_S = 10.0
+
+
+def assert_worker_url_secure(name: str, url: str) -> None:
+    """A remote worker link must be encrypted (T-031, gate G3 security).
+
+    ``local`` and loopback are dev/test-only and always allowed. Otherwise
+    the link must be either HTTPS (TLS) or a private/RFC-1918 address — the
+    latter meaning it rides an encrypted overlay (WireGuard/VPN), where
+    plain HTTP never crosses the public internet. Plain HTTP to a public
+    host is rejected: the A2A payload (and the token) would travel in the
+    clear.
+    """
+    if url == "local":
+        return
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        return
+    host = parsed.hostname or ""
+    if host in ("localhost", "127.0.0.1", "::1"):
+        return
+    try:
+        if ipaddress.ip_address(host).is_private:
+            return
+    except ValueError:
+        pass  # a public hostname over plain http — reject below
+    raise ConfigError(
+        f"worker {name!r} url {url!r} is not secure: a non-local A2A endpoint "
+        "must use https or a private/WireGuard address (plain http to a public "
+        "host would send the task and A2A token in the clear)"
+    )
 
 
 class WorkerClient(ABC):

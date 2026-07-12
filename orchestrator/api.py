@@ -32,7 +32,12 @@ from common.tracing import Subscriber, TraceBus, TraceEvent, make_log_subscriber
 from orchestrator.agui import extract_question, stream_agui_run
 from orchestrator.graph import Orchestrator
 from orchestrator.persistence import create_run, finalize_run, make_db_subscriber
-from orchestrator.worker_client import A2AWorkerClient, LocalWorkerClient, WorkerClient
+from orchestrator.worker_client import (
+    A2AWorkerClient,
+    LocalWorkerClient,
+    WorkerClient,
+    assert_worker_url_secure,
+)
 
 TRACE_BUS = TraceBus()
 STREAM_QUEUE_MAX = 1000
@@ -152,6 +157,7 @@ def _build_orchestrator(checkpointer: object | None) -> Orchestrator:
     for entry in registry:
         name = str(entry["name"])
         url = str(entry["url"])
+        assert_worker_url_secure(name, url)  # T-031: TLS/WG required off-localhost
         if url == "local":
             clients[name] = LocalWorkerClient(trace_bus=TRACE_BUS)
         else:

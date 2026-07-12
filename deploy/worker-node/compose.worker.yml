@@ -1,0 +1,45 @@
+# Remote worker node (T-031, gate G3). Runs ONLY the ReAct worker as an A2A
+# service; its tools live on the main node and are reached over MCP. The
+# worker holds no data — it calls MCP tool endpoints + the cloud LLM and
+# returns WorkerResult (with its trace) to the orchestrator over A2A.
+#
+# Connectivity: a WireGuard mesh makes the main node (behind NAT) and this
+# VPS mutually reachable on private 10.8.0.0/24 addresses (the main node is
+# 10.8.0.1, this node 10.8.0.2). WireGuard encrypts the link, so A2A/MCP
+# traffic never crosses the public internet in the clear — that satisfies
+# the "TLS for non-localhost" requirement without a public domain/cert. The
+# A2A bearer token is still mandatory. See README.md.
+services:
+  worker:
+    image: ghcr.io/${GHCR_OWNER:-zzlawlzz}/ledgerlens:latest
+    # Or build from a checkout on the node: `build: ../..` (needs the repo).
+    command:
+      ["uvicorn", "workers.a2a_server:app", "--host", "0.0.0.0", "--port", "8081"]
+    env_file: .env.worker
+    environment:
+      WORKER_NODE_NAME: ${WORKER_NODE_NAME:-vps-fi}
+      WORKER_BASE_URL: http://${WG_SELF_IP:-10.8.0.2}:8081
+      # Tools + LLM: MCP endpoints live on the main node over WireGuard.
+      MCP_SQL_URL: http://${WG_MAIN_IP:-10.8.0.1}:8765/mcp
+      MCP_RAG_URL: http://${WG_MAIN_IP:-10.8.0.1}:8766/mcp
+      MCP_ENRICH_URL: http://${WG_MAIN_IP:-10.8.0.1}:8767/mcp
+      # The worker persists nothing directly; it needs no Postgres/Qdrant.
+    # Bind to the WireGuard interface only — never expose 8081 publicly.
+    # UFW on the host additionally blocks 8081 from everything but the WG net.
+    ports:
+      - "${WG_SELF_IP:-10.8.0.2}:8081:8081"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request, sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8081/healthz',
+          timeout=3).status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    mem_limit: 512m  # 957MB box: leave headroom for the OS + WireGuard
