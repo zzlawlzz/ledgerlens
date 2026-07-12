@@ -8,10 +8,10 @@ Status of the T-036 sub-parts:
 | Part | What | State |
 |------|------|-------|
 | §2 | `make seed` / `make snapshot` — corpus without EDGAR | **done** (this doc) |
-| §1 | `BUDGET_PROFILE=demo` rate/cost limits | pending |
-| §3 | Security-pass checklist | pending |
-| §4 | `cloudflared` overlay + public TLS | pending (owner: CF domain) |
-| §5 | UI "public demo" banner | pending |
+| §1 | `BUDGET_PROFILE=demo` rate/cost limits | **done** (`orchestrator/demo_limits.py`) |
+| §3 | Security-pass checklist | **done** (`SECURITY.md` + overlay) |
+| §4 | `cloudflared` overlay + public TLS | **done** (`cloudflared` in the overlay) |
+| §5 | UI "public demo" banner | **done** (`BUDGET_PROFILE=demo` gated) |
 
 ---
 
@@ -65,8 +65,29 @@ from the running stack. The CI artifact is the source of truth for `make seed`; 
 
 ---
 
-## Remaining sub-parts
+## Go live (§4 — Cloudflare Tunnel)
 
-- **§1 budget profile**, **§3 security-pass**, **§4 Cloudflare Tunnel overlay**,
-  **§5 UI banner** — see BACKLOG.md T-036. §4 needs the owner's Cloudflare domain
-  (Q-05); until then the fallback is direct entry on the white IP with Caddy TLS.
+The public entry point is a `cloudflared` connector in the demo overlay. It dials
+**out** to Cloudflare (no inbound port on the host), and the tunnel's dashboard
+ingress routes only the demo hostname → `web:80`. Nothing else has a public route;
+the host firewall (ufw) denies all inbound (see SECURITY.md).
+
+1. Create a tunnel in the Cloudflare Zero Trust dashboard (Networks → Tunnels),
+   add a public hostname `app.<domain>` → `HTTP` → `web:80`, and copy the
+   connector **token**.
+2. Put it in the (gitignored) `.env`: `CLOUDFLARE_TUNNEL_TOKEN=<token>`.
+3. Bring up the demo with both overlays merged:
+
+   ```bash
+   docker compose -f docker-compose.yml -f deploy/demo/docker-compose.demo.yml up -d
+   ```
+
+   This runs the app/worker/MCP in `BUDGET_PROFILE=demo` (admission limits + tight
+   run-budget active), adds `no-new-privileges` to every service, and starts
+   `cloudflared`. An empty token makes the connector exit, so the demo is opt-in.
+4. Verify: `docker logs platform-cloudflared-1` shows *Registered tunnel
+   connection*, and `https://app.<domain>` serves the UI over Cloudflare's TLS.
+
+Fallback without a domain: direct entry on the white IP with Caddy TLS.
+
+The current demo domain is **ledgerlens.space** (`app.ledgerlens.space`).

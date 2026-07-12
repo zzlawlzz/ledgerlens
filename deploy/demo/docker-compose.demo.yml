@@ -69,3 +69,18 @@ services:
       BUDGET_PROFILE: demo
     security_opt:
       - no-new-privileges:true
+
+  # Public entry point (T-036 §4). cloudflared dials OUT to Cloudflare (no
+  # inbound port), and the tunnel's dashboard ingress routes ONLY the demo
+  # hostname -> web:80. The token is a per-connector secret from the CF Zero
+  # Trust dashboard, read from CLOUDFLARE_TUNNEL_TOKEN in the (gitignored) .env;
+  # an empty token makes the container exit, so the demo is opt-in.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      web:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
