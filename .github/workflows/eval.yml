@@ -34,6 +34,11 @@ jobs:
     # hardware ceiling, so citation is measured honestly. Requires the runner
     # service (labels: self-hosted, ledgerlens-epyc) to be online.
     runs-on: [self-hosted, ledgerlens-epyc]
+    env:
+      # Self-hosted runner: the HF Xet download accelerator writes to
+      # ~/.cache/huggingface/xet, which failed with a permission error on the
+      # persistent runner home. Disable it — plain HF downloads work fine.
+      HF_HUB_DISABLE_XET: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
