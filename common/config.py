@@ -66,6 +66,12 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # Optional egress proxy for Telegram alerts (T-035). api.telegram.org is
+    # blocked from some networks (e.g. RU IPs) — route sendMessage through an
+    # HTTP proxy when set; empty means a direct connection. Same idea as
+    # edgar_proxy_url but scoped to the alert channel only, so DeepSeek/EDGAR
+    # traffic is unaffected.
+    telegram_proxy_url: str = ""
 
     grafana_admin_password: str = ""
     grafana_ro_password: str = ""

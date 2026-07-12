@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from common.config import Settings
 from orchestrator.alerting import format_alert, send_alert
 from orchestrator.guardrail import GuardVerdict, find_advice_spans
@@ -63,6 +65,31 @@ async def test_send_alert_delivers_when_credentials_present() -> None:
     assert result.channel == "telegram"
     assert client.posted and client.posted[0][1]["chat_id"] == "42"
     assert client.posted[0][1]["text"] == "hi there"
+
+
+@pytest.mark.parametrize("proxy", ["http://proxy:8888", ""])
+async def test_send_alert_passes_proxy_to_owned_client(
+    monkeypatch: pytest.MonkeyPatch, proxy: str
+) -> None:
+    """When no client is injected, the configured telegram_proxy_url (or None)
+    is handed to the httpx client the function builds (T-035, RU-IP egress)."""
+    captured: dict[str, Any] = {}
+
+    class _CapClient:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def post(self, url: str, json: dict[str, Any]) -> _FakeResponse:
+            return _FakeResponse()
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr("orchestrator.alerting.httpx.AsyncClient", _CapClient)
+    settings = Settings(telegram_bot_token="tok", telegram_chat_id="42", telegram_proxy_url=proxy)
+    result = await send_alert("hi", settings=settings)
+    assert result.delivered is True
+    assert captured["proxy"] == (proxy or None)
 
 
 # --- daily budget ----------------------------------------------------------

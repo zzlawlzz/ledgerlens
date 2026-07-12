@@ -55,7 +55,11 @@ async def send_alert(
     url = TELEGRAM_API.format(token=token)
     payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
     owns_client = client is None
-    client = client or httpx.AsyncClient(timeout=_SEND_TIMEOUT_S)
+    # Route through the alert proxy when configured (api.telegram.org is blocked
+    # from RU IPs); a passed-in client (tests) is used as-is.
+    client = client or httpx.AsyncClient(
+        timeout=_SEND_TIMEOUT_S, proxy=settings.telegram_proxy_url or None
+    )
     try:
         response = await client.post(url, json=payload)
         response.raise_for_status()
