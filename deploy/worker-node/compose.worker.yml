@@ -3,12 +3,15 @@
 # worker holds no data — it calls MCP tool endpoints + the cloud LLM and
 # returns WorkerResult (with its trace) to the orchestrator over A2A.
 #
-# Connectivity: a WireGuard mesh makes the main node (behind NAT) and this
-# VPS mutually reachable on private 10.8.0.0/24 addresses (the main node is
-# 10.8.0.1, this node 10.8.0.2). WireGuard encrypts the link, so A2A/MCP
-# traffic never crosses the public internet in the clear — that satisfies
-# the "TLS for non-localhost" requirement without a public domain/cert. The
-# A2A bearer token is still mandatory. See README.md.
+# Connectivity: an AmneziaWG mesh makes the main node (behind NAT/DPI in RU)
+# and this VPS mutually reachable on private 10.8.0.0/24 addresses (the main
+# node is 10.8.0.1, this node 10.8.0.2). AmneziaWG is a WireGuard fork with
+# DPI-resistant obfuscation (junk packets + header masking) so the tunnel
+# survives deep-packet inspection on the home node's uplink; it encrypts the
+# link exactly like WireGuard, so A2A/MCP traffic never crosses the public
+# internet in the clear — that satisfies the "TLS for non-localhost"
+# requirement without a public domain/cert. The A2A bearer token is still
+# mandatory. See README.md.
 services:
   worker:
     image: ghcr.io/${GHCR_OWNER:-zzlawlzz}/ledgerlens:latest
@@ -18,16 +21,16 @@ services:
     env_file: .env.worker
     environment:
       WORKER_NODE_NAME: ${WORKER_NODE_NAME:-vps-fi}
-      WORKER_BASE_URL: http://${WG_SELF_IP:-10.8.0.2}:8081
-      # Tools + LLM: MCP endpoints live on the main node over WireGuard.
-      MCP_SQL_URL: http://${WG_MAIN_IP:-10.8.0.1}:8765/mcp
-      MCP_RAG_URL: http://${WG_MAIN_IP:-10.8.0.1}:8766/mcp
-      MCP_ENRICH_URL: http://${WG_MAIN_IP:-10.8.0.1}:8767/mcp
+      WORKER_BASE_URL: http://${AWG_SELF_IP:-10.8.0.2}:8081
+      # Tools + LLM: MCP endpoints live on the main node over AmneziaWG.
+      MCP_SQL_URL: http://${AWG_MAIN_IP:-10.8.0.1}:8765/mcp
+      MCP_RAG_URL: http://${AWG_MAIN_IP:-10.8.0.1}:8766/mcp
+      MCP_ENRICH_URL: http://${AWG_MAIN_IP:-10.8.0.1}:8767/mcp
       # The worker persists nothing directly; it needs no Postgres/Qdrant.
-    # Bind to the WireGuard interface only — never expose 8081 publicly.
-    # UFW on the host additionally blocks 8081 from everything but the WG net.
+    # Bind to the AmneziaWG interface (awg0) only — never expose 8081 publicly.
+    # UFW on the host additionally blocks 8081 from everything but the AWG net.
     ports:
-      - "${WG_SELF_IP:-10.8.0.2}:8081:8081"
+      - "${AWG_SELF_IP:-10.8.0.2}:8081:8081"
     healthcheck:
       test:
         - CMD
@@ -42,4 +45,4 @@ services:
       retries: 12
       start_period: 20s
     restart: unless-stopped
-    mem_limit: 512m  # 957MB box: leave headroom for the OS + WireGuard
+    mem_limit: 512m  # 957MB box: leave headroom for the OS + AmneziaWG
