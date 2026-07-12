@@ -66,6 +66,13 @@ EXAMPLE_QUERIES = [
     "AND n.period_end = r.period_end AND n.fiscal_period = r.fiscal_period "
     "WHERE r.metric = 'revenue' AND n.metric = 'net_income' AND r.fiscal_period = 'FY' "
     "ORDER BY r.ticker, r.period_end",
+    # Price dynamics: close_price is a daily metric (one row per trading day),
+    # so aggregate per month instead of returning hundreds of daily rows.
+    "SELECT date_trunc('month', period_end)::date AS month, "
+    "MIN(value) AS low, MAX(value) AS high, "
+    "(array_agg(value ORDER BY period_end DESC))[1] AS month_end_close "
+    "FROM latest_facts WHERE ticker = 'SBER' AND metric = 'close_price' "
+    "GROUP BY 1 ORDER BY 1",
 ]
 
 _METRIC_EQ = re.compile(r"metric\s*=\s*'([^']+)'", re.IGNORECASE)

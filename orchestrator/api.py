@@ -323,8 +323,9 @@ async def examples() -> JSONResponse:
     """Example questions for the UI buttons (T-024), both locales; the RU
     mode serves its own set (T-032)."""
     app_config = load_yaml_config("app")
-    key = "examples_ru" if get_settings().app_mode == "ru" else "examples"
-    return JSONResponse({"examples": app_config.get(key, [])})
+    mode = get_settings().app_mode
+    key = "examples_ru" if mode == "ru" else "examples"
+    return JSONResponse({"examples": app_config.get(key, []), "mode": mode})
 
 
 @app.get("/healthz")

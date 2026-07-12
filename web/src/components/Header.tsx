@@ -2,7 +2,7 @@ import type { Lang } from "../i18n";
 import { useI18n } from "../i18n";
 import type { RunView } from "../types";
 
-export function Header({ run }: { run: RunView }) {
+export function Header({ run, mode }: { run: RunView; mode?: string }) {
   const { lang, setLang, t } = useI18n();
   const cost = run.summary?.usage.cost_usd;
   return (
@@ -32,6 +32,11 @@ export function Header({ run }: { run: RunView }) {
       <div className="disclaimer" data-testid="disclaimer">
         {t("disclaimer")}
       </div>
+      {mode === "ru" && (
+        <div className="disclaimer iss-attribution" data-testid="iss-attribution">
+          {t("iss_attribution")}
+        </div>
+      )}
     </header>
   );
 }

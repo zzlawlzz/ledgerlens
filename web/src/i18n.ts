@@ -9,6 +9,8 @@ const DICT = {
     title: "LedgerLens",
     subtitle: "Multi-agent financial analysis",
     disclaimer: "This is financial analytics, not investment advice.",
+    iss_attribution:
+      "MOEX ISS data is shown for informational/demo purposes only (delayed Moscow Exchange data).",
     ask_placeholder: "Ask about the loaded companies…",
     ask_button: "Ask",
     examples_title: "Try one of these:",
@@ -41,6 +43,8 @@ const DICT = {
     title: "LedgerLens",
     subtitle: "Мультиагентный финансовый анализ",
     disclaimer: "Это финансовая аналитика, а не инвестиционная рекомендация.",
+    iss_attribution:
+      "Данные MOEX ISS приведены в ознакомительных/демонстрационных целях (задержанные данные Московской биржи).",
     ask_placeholder: "Спросите о загруженных компаниях…",
     ask_button: "Спросить",
     examples_title: "Попробуйте один из примеров:",
