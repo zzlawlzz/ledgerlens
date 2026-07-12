@@ -1,5 +1,5 @@
 # LedgerLens — task automation. TODO-stubs are implemented by their backlog tasks.
-.PHONY: up down lint test test-integration ingest demo-ingest demo seed eval smoke db-up db-migrate db-reset bench-vector
+.PHONY: up down lint test test-integration ingest demo-ingest demo seed snapshot eval smoke db-up db-migrate db-reset bench-vector
 
 lint:  ## Static checks: format, lint, types
 	uv run ruff format --check .
@@ -44,8 +44,22 @@ demo:  ## Full stack up + ingest-on-empty + smoke + UI URL (gate G2)
 	@echo "LedgerLens UI: http://localhost:3000"
 	@echo "Grafana dashboards: http://localhost:3001 (anonymous viewer, T-034)"
 
-seed:  ## Restore demo data snapshot without hitting EDGAR
-	@echo "TODO(T-036): seed"
+SNAPSHOT_DIR ?= snapshot/eval_demo
+
+seed:  ## Restore the demo corpus without hitting EDGAR (fetches the release artifact if absent)
+	@if [ ! -f "$(SNAPSHOT_DIR)/eval_demo.pgdump" ]; then \
+		echo "Snapshot absent under $(SNAPSHOT_DIR) — fetching the eval-demo-snapshot artifact…"; \
+		bash scripts/fetch_demo_snapshot.sh "$(SNAPSHOT_DIR)"; \
+	fi
+	docker compose up -d --wait postgres qdrant
+	uv run alembic upgrade head
+	uv run python scripts/eval_snapshot.py restore --dir $(SNAPSHOT_DIR) --clean
+	@echo "Demo corpus restored from $(SNAPSHOT_DIR) (no EDGAR traffic)."
+
+snapshot:  ## Export a fresh demo-corpus snapshot from the running stack (after a re-ingest)
+	uv run python scripts/eval_snapshot.py export --dir $(SNAPSHOT_DIR)
+	@echo "Snapshot written to $(SNAPSHOT_DIR)/ — upload it as the eval-demo-snapshot artifact"
+	@echo "(gh workflow run eval-snapshot.yml) so 'make seed' can fetch it on a clean machine."
 
 eval:  ## Run eval harness against a running stack
 	@echo "TODO(T-029): eval harness"

@@ -78,11 +78,43 @@ def export_snapshot(out_dir: Path, qdrant_url: str) -> None:
     print(f"exported {out_dir / PG_DUMP_NAME} and {out_dir / QDRANT_SNAPSHOT_NAME}")
 
 
-def restore_snapshot(in_dir: Path, qdrant_url: str) -> None:
+def _clean_domain(qdrant_url: str) -> None:
+    """Wipe the demo domain tables and Qdrant collection so a restore is idempotent.
+
+    CI restores into a freshly-migrated (empty) database, but ``make seed`` may run
+    against a stack that already holds a corpus. ``pg_restore --data-only`` would then
+    fail on duplicate primary keys, so ``--clean`` truncates first. Only the demo
+    domain tables are touched; operational tables are left alone.
+    """
+    truncate = "TRUNCATE TABLE " + ", ".join(DOMAIN_TABLES) + " RESTART IDENTITY CASCADE;"
+    _run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "-U",
+            "app",
+            "-d",
+            "ledgerlens",
+            "-c",
+            truncate,
+        ]
+    )
+    resp = httpx.delete(f"{qdrant_url}/collections/{QDRANT_COLLECTION}", timeout=60)
+    resp.raise_for_status()
+
+
+def restore_snapshot(in_dir: Path, qdrant_url: str, clean: bool = False) -> None:
     pg_dump_path = in_dir / PG_DUMP_NAME
     qdrant_snapshot_path = in_dir / QDRANT_SNAPSHOT_NAME
     if not pg_dump_path.exists() or not qdrant_snapshot_path.exists():
         raise FileNotFoundError(f"snapshot files missing under {in_dir}")
+
+    if clean:
+        _clean_domain(qdrant_url)
 
     _run(["docker", "compose", "cp", str(pg_dump_path), f"postgres:/tmp/{PG_DUMP_NAME}"])
     _run(
@@ -120,13 +152,19 @@ def main(argv: list[str] | None = None) -> int:
         "--dir", required=True, help="snapshot directory (export target / restore source)"
     )
     parser.add_argument("--qdrant-url", default="http://localhost:6333")
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="restore only: truncate demo domain tables + drop the Qdrant collection first "
+        "(idempotent re-seed against a non-empty stack)",
+    )
     args = parser.parse_args(argv)
 
     path = Path(args.dir)
     if args.action == "export":
         export_snapshot(path, args.qdrant_url)
     else:
-        restore_snapshot(path, args.qdrant_url)
+        restore_snapshot(path, args.qdrant_url, clean=args.clean)
     return 0
 
 
