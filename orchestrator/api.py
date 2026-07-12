@@ -20,7 +20,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from ag_ui.core import RunAgentInput
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -30,6 +30,7 @@ from common.db import get_session_factory
 from common.logging import bind_run_context, configure_logging, get_logger, reset_run_context
 from common.tracing import Subscriber, TraceBus, TraceEvent, make_log_subscriber
 from orchestrator.agui import extract_question, stream_agui_run
+from orchestrator.demo_limits import DemoLimiter, DemoLimitError, build_demo_limiter
 from orchestrator.graph import Orchestrator
 from orchestrator.monitor_api import monitor_router
 from orchestrator.persistence import create_run, finalize_run, make_db_subscriber
@@ -144,6 +145,43 @@ app = FastAPI(title="LedgerLens API", lifespan=_lifespan)
 app.include_router(monitor_router)  # T-035 monitoring layer B (/api/monitor/*)
 
 
+_DEMO_LIMITER: DemoLimiter | None = None
+
+
+def get_demo_limiter() -> DemoLimiter:
+    """Public-demo admission limiter (T-036 §1). No-op off the demo profile."""
+    global _DEMO_LIMITER
+    if _DEMO_LIMITER is None:
+        _DEMO_LIMITER = build_demo_limiter(get_settings())
+    return _DEMO_LIMITER
+
+
+@app.exception_handler(DemoLimitError)
+async def _demo_limit_handler(_: Request, exc: DemoLimitError) -> JSONResponse:
+    """Render a rejected demo request as a polite, human-readable refusal."""
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+
+def _client_ip(request: Request) -> str:
+    """Caller IP for rate limiting. Behind the demo's reverse proxy / Cloudflare
+    Tunnel the real address is in X-Forwarded-For (first hop); fall back to the
+    direct peer."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _admit(question: str, request: Request) -> None:
+    """Run all pre-run demo checks and take a concurrency slot, or raise
+    DemoLimitError. The slot is released in ``_execute_run``'s finally block."""
+    limiter = get_demo_limiter()
+    limiter.check_question(question)
+    limiter.check_rate(_client_ip(request))
+    limiter.check_daily_cost()
+    limiter.acquire_slot()
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     mode: str = "us"
@@ -224,6 +262,11 @@ async def _execute_run(run_id: uuid.UUID, request: ChatRequest) -> None:
             )
         except Exception as exc:  # noqa: BLE001
             get_logger(node="orchestrator").error("finalize_failed", error=str(exc))
+        # Demo accounting: return the concurrency slot and charge the daily cap
+        # (no-op off the demo profile). Runs after finalize so cost is known.
+        limiter = get_demo_limiter()
+        limiter.release_slot()
+        limiter.record_cost(float(usage.get("cost_usd", 0.0) or 0.0))
         if error is not None or final_state is None:
             await TRACE_BUS.publish("run_error", {"error": error or "no state"}, run_id=str(run_id))
         else:
@@ -279,9 +322,14 @@ async def _drain_events(
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest) -> StreamingResponse:
+async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse:
     ensure_stream_infrastructure()
-    run_id = await create_run(request.question, request.mode)
+    _admit(request.question, http_request)  # T-036 §1: demo limits (no-op in dev)
+    try:
+        run_id = await create_run(request.question, request.mode)
+    except BaseException:
+        get_demo_limiter().release_slot()  # never leak the slot on dispatch failure
+        raise
     queue, subscriber = _subscribe_run_events(str(run_id))
     asyncio.create_task(_execute_run(run_id, request))
     return StreamingResponse(
@@ -292,7 +340,7 @@ async def chat(request: ChatRequest) -> StreamingResponse:
 
 
 @app.post("/agui")
-async def agui(body: RunAgentInput) -> StreamingResponse:
+async def agui(body: RunAgentInput, http_request: Request) -> StreamingResponse:
     """AG-UI protocol endpoint (T-023): RunAgentInput -> AG-UI SSE stream.
 
     thread_id maps to the checkpointer session, so follow-up questions in the
@@ -303,7 +351,12 @@ async def agui(body: RunAgentInput) -> StreamingResponse:
         question = extract_question(body)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    run_id = await create_run(question, get_settings().app_mode)
+    _admit(question, http_request)  # T-036 §1: demo limits (no-op in dev)
+    try:
+        run_id = await create_run(question, get_settings().app_mode)
+    except BaseException:
+        get_demo_limiter().release_slot()  # never leak the slot on dispatch failure
+        raise
     queue, subscriber = _subscribe_run_events(str(run_id))
     request = ChatRequest(question=question, session_id=body.thread_id)
     asyncio.create_task(_execute_run(run_id, request))

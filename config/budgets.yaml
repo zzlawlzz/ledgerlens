@@ -31,6 +31,11 @@ profiles:
     max_tokens_per_run: 80000
     wall_clock_s_per_run: 180
     runs_per_hour_per_ip: 10
+    # Public-demo admission limits (T-036 §1, CONTRACTS §13). Enforced in-process
+    # by orchestrator.demo_limits; the system-wide daily cost cap comes from
+    # DAILY_COST_CAP_USD (env). Only active when BUDGET_PROFILE=demo.
+    max_question_chars: 500
+    max_concurrent_runs: 2
 
 # Layer B (n8n monitoring, T-035) — independent of the per-run profiles above.
 # Caps how many 8-K summaries the orchestrator will generate per day so a burst
