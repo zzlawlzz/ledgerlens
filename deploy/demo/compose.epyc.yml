@@ -1,0 +1,36 @@
+# EPYC home-node overlay (T-036 §4 / T-031). The persistent demo runs on the
+# same box as the GitHub Actions self-hosted eval runner (Q-22=A), which spins
+# up its OWN copy of the stack. To coexist, the demo must not fight for host
+# ports or container names:
+#
+#   * Container names: bring the demo up under a distinct project name, e.g.
+#     `docker compose -p lldemo -f docker-compose.yml \
+#        -f deploy/demo/docker-compose.demo.yml -f deploy/demo/compose.epyc.yml up -d`
+#     so its containers are `lldemo-*` while the eval's stay `ledgerlens-*`.
+#   * Host ports: this overlay drops every published host port (compose merges
+#     lists, so `!reset []` clears them). The public entry is the cloudflared
+#     tunnel, which reaches `web:80` on the internal network — no host port
+#     needed. `web` keeps ONE non-default port (18080) for local health checks
+#     that cannot collide with the eval's default 3000.
+#
+# Requires Docker Compose v2.24+ for the `!reset` tag (v5.x on the node).
+services:
+  postgres:
+    ports: !reset []
+  qdrant:
+    ports: !reset []
+  app:
+    ports: !reset []
+  grafana:
+    ports: !reset []
+  mcp-sql:
+    ports: !reset []
+  mcp-rag:
+    ports: !reset []
+  mcp-enrich:
+    ports: !reset []
+  worker:
+    ports: !reset []
+  web:
+    ports: !reset
+      - "18080:80"
