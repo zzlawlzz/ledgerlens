@@ -39,7 +39,7 @@
 
 _Формат: `[роль] задача — каталоги — время начала — статус`_
 
-- `[регулярная] T-037 §1 (инференс-бенчмарк CPU-vs-API) — НАЧАТО ~18:05.` Каталоги: **только** `benchmarks/inference/` + Makefile-цель `bench-inference` (закоммичу сразу). НЕ трогаю `benchmarks/vector/` (твоё, `a6feded`), config/*.yaml, docker-compose, deploy/. ⚠️ **Вижу твою активность:** `fe.tar` (3.4ГБ образ) создан 17:49, коммиты T-036 EPYC-оверлея до 16:53 — похоже, ты деплоишь демо на EPYC. Локальную CPU-часть (ollama на EPYC) НЕ гоняю (не конкурирую за железо/стек); делаю только API-часть (deepseek) живьём + харнесс, local-часть — задел для домашней ноды.
+- `[регулярная] T-037 §1 (инференс-бенчмарк CPU-vs-API, API-часть) — ЗАВЕРШЕНО кодом+живым API-прогоном, закоммичено+запушено (main=9549315). Зона СВОБОДНА.` Тронула ТОЛЬКО `benchmarks/inference/` (новые `bench.py`,`prompts.py`,`REPORT.md`,`results.json`,4 PNG) + Makefile-цель `bench-inference` + `BACKLOG.md`³⁰. НЕ трогала `benchmarks/vector/`, config/*.yaml, docker-compose, deploy/, eval.yml. **Остаток T-037 (задача `[ ]`): local-CPU-часть (2-3 ollama-кандидата) + ADR-3 — ждут домашнюю EPYC-ноду (сейчас занята демо-стеком+eval-раннером, не конкурировала).** Local-раннер готов: `make bench-inference BENCH_ARGS='--local-models qwen3.5:27b,llama3.2:4b'` на ноде с `OLLAMA_BASE_URL`.
 - `[регулярная] T-036 §5 (UI-баннер демо) — ЗАВЕРШЕНО кодом+тестами+живой проверкой, закоммичено+запушено (main=acee537). Зона СВОБОДНА.` Тронула: `orchestrator/api.py` (флаг `demo` в `/api/examples`, закоммичено сразу), `web/src/{App,components/Header,i18n,styles.css}`, новый `web/e2e/demo-banner.spec.ts`, `BACKLOG.md`²⁹. НЕ трогала graph.py/worker_client.py/prompts/config/*.yaml/docker-compose/eval.yml.
 - ⚠️ **НАХОДКА для оркестратора/владельца (Q-22=A):** self-hosted EPYC eval `29189266539` УПАЛ (25м, exit 1) НЕ по метрикам, а по **правам ФС на раннере**: `Permission denied (os error 13)` при записи в `/home/zzlawlzz/.cache/huggingface/xet/...` → fastembed не смог скачать модель → `RuntimeError`. Раннер-процесс (`epyc-home`) не может писать в `~/.cache/huggingface` (вероятно каталог принадлежит root от прошлого ручного прогона). Также warning `actions/cache` restore auth fail (обычно безвредно). **Фикс — на стороне раннера/воркфлоу (домен оркестратора):** либо `chown -R` кэша под юзера сервиса на ноде, либо в eval.yml задать job-env `HF_HOME`/`HF_HUB_CACHE` в job-локальный (`${{ github.workspace }}/.hf`) писабельный путь. НЕ трогаю eval.yml (твой `51b2f40` 45м назад + твой домен Q-22).
 
@@ -101,6 +101,11 @@ APP_MODE=ru). Все 4 живых критерия выполнены.
 free-tier: только compact (~100 дней), история за старые годы — премиум
 (документировано, не блокер).
 
+**T-037 (бенчмарки) — §2 vector ✅ (`a6feded`), §1 инференс API-часть ✅
+(`9549315`, живые deepseek-числа + харнесс `benchmarks/inference/`).** Остаток
+`[ ]`: local-CPU-часть (2-3 ollama-кандидата на EPYC) + ADR-3 — ждут ноду
+(раннер готов: `make bench-inference BENCH_ARGS='--local-models …'`).
+
 **Стек:** 9 контейнеров, ollama НАМЕРЕННО выгружен на время eval-прогонов
 (снимает RAM-давление → OpenBLAS OOM не рушит прогоны). Вернуть `docker compose
 --profile local up -d ollama` для проверок T-017/локального тира.
@@ -137,6 +142,9 @@ free-tier: только compact (~100 дней), история за стары�
 ---
 
 ## Журнал (append-only, новые записи сверху)
+
+### 2026-07-12 ~18:35 · регулярная сессия — ✅ T-037 §1 (инференс-бенчмарк, API-часть) done кодом+живым прогоном
+Старт: `git pull` (up to date), COORDINATION, БД (eval_runs до id 12 локальные — GH-раннеры в БД не пишутся), GH (`gh run list eval.yml`). **Находка при сверке:** EPYC eval `29194112519` (валидация citation=1.0) ОТМЕНЁН владельцем (`@zzlawlzz`, ~14:07); T-041-закрытие всё ещё ждёт зелёного EPYC-прогона. Увидела твою активность (`fe.tar` 3.4ГБ создан 17:49, T-036 EPYC-оверлей до 16:53) → по правилу 30 минут НЕ трогала T-036/deploy/docker-compose/config; взяла непересекающийся **T-037 §1 инференс-бенчмарк** (`benchmarks/inference/` — отдельно от твоего `benchmarks/vector/`). **Сделано (3 фичи+1 docs коммита `32f3c92`→`9549315`, запушено):** харнесс `bench.py`+`prompts.py` (20 промптов×4 task-класса, стриминговый TTFT, end-to-end tok/s, prices.yaml-костинг, judge-качество 1-5), `make bench-inference`, живой прогон vs api.deepseek.com. **Числа (REPORT.md+charts+results.json закоммичены):** flash TTFT p50 0.74s/$0.02·1k/judge 4.80; pro(thinking) TTFT p50 2.75s (p95 14.9s)/$0.23·1k/judge 5.00 — обосновывают роутинг-политику. Раздел про GPU-исключение (Q-07) есть. **Поймала и исправила methodology-баг:** наивный tok/s=out/(lat−TTFT) взрывался до 45000+ на pro-тире (thinking буферизует reasoning+ответ в финальный всплеск, TTFT≈lat) → перешла на end-to-end out/lat. **ОСТАЛОСЬ (T-037 `[ ]`):** local-CPU-часть (2-3 ollama на EPYC) + ADR-3 + синк ADR-2/3 — раннер готов (`--local-models`), ждёт ноду (сейчас занята демо+eval). Local на dev-ПК осознанно НЕ гоняла (диск C: 99%, стек флейкует, не конкурировала с тобой за EPYC). Зона свободна.
 
 ### 2026-07-12 ~15:10 · оркестратор — ✅ СТЕК МИГРИРОВАН НА EPYC (демо полностью функционально)
 По просьбе владельца перенёс весь стек на домашнюю ноду EPYC (`192.168.1.115`).
