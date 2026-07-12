@@ -669,7 +669,7 @@
 **ТЗ:**
 1. `deploy/worker-node/`: `compose.worker.yml` (только `worker`; инструменты — по MCP к основной ноде), `.env.worker.example` (A2A_TOKEN, WORKER_NODE_NAME=vps-1, ORCHESTRATOR/MCP URLs), `caddy` для TLS-терминации A2A-эндпоинта (автосертификат по домену) — либо WireGuard-вариант как документированная альтернатива без домена.
 2. Runbook `deploy/worker-node/README.md`: провижининг Ubuntu VPS с нуля (docker, ufw: только 443/ssh, env, up, проверка), процедура обновления и отзыва токена.
-3. Оркестратор: `config/workers.yaml` — второй воркер с url удалённой ноды; диспетчер: маршрутизация по skills + предпочтение локального при равенстве; при недоступности удалённого — деградация на локальный (лог + TraceEvent budget/degradation-warning).
+3. Оркестратор: `config/workers.yaml` — второй воркер с url удалённой ноды; диспетчер: маршрутизация по skills + предпочтение локального при равенстве; при недоступности удалённого — деградация на локальный (лог + TraceEvent budget/degradation-warning). ✅ **Диспетчер реализован (`d9ec7a9`):** `_ordered_clients(skill)` — round-robin первичного среди skill-воркеров + local-preferred failover-хвост (Q-20); `_execute` делает failover на `ToolError` с trace-событием `worker_unreachable`; `WorkerClient.is_local`. 3 юнит-теста (failover→local, all-unreachable→partial, round-robin). Остаётся живой деплой (VPS+WireGuard) для G3-критериев.
 4. Безопасность: A2A_TOKEN обязателен, TLS обязателен для не-localhost URL (валидация конфига); MCP-эндпоинты основной ноды для удалённого воркера — тоже за токеном/TLS (тот же caddy).
 5. Латентность удалённых шагов видна в steps (worker_node) — материал для Grafana.
 
