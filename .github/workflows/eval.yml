@@ -7,6 +7,12 @@ name: eval
 
 on:
   workflow_dispatch:
+    inputs:
+      profile:
+        description: "eval profile (ci = 10 balanced cases; full = all 41)"
+        type: choice
+        options: [ci, full]
+        default: ci
   schedule:
     - cron: "30 3 * * *"   # nightly
   pull_request:
@@ -89,15 +95,17 @@ jobs:
       # above: the router drops the local tier at startup, cloud-only routing.
       - run: docker compose up -d --wait app worker mcp-sql mcp-rag
 
-      - name: Run eval --profile ci
+      - name: Run eval
         id: eval_run
         env:
           POSTGRES_HOST: localhost
           POSTGRES_PASSWORD: ci-password
           POSTGRES_RO_PASSWORD: ci-ro-password
+          # Manual dispatch may pick 'full'; nightly/PR default to 'ci'.
+          EVAL_PROFILE: ${{ github.event.inputs.profile || 'ci' }}
         run: |
           set +e
-          uv run python -m eval.run --profile ci --base-url http://localhost:8000
+          uv run python -m eval.run --profile "$EVAL_PROFILE" --base-url http://localhost:8000
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Locate this run's report
