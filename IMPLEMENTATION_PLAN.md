@@ -126,7 +126,7 @@
 | ADR-5 | Стратегии: оркестратор = Plan-and-Execute, воркеры = ReAct | Зафиксировано |
 | ADR-6 | Embedding-модель (единая для док/запросов) | **Решено (T-002), поправлено (T-018, 2026-07-10):** intfloat/multilingual-e5-large (1024d, multilingual; префиксы query/passage через fastembed API) + sparse BM25 + reranker jina-reranker-v2-base-multilingual. Вывод T-002 о поддержке bge-m3/bge-reranker-v2-m3 в fastembed 0.8 не подтвердился живым запуском |
 | ADR-7 | Провайдеры cloud API и их роли в роутинге | **Решено (Q-01) + пины T-002 (2026-07-10):** DeepSeek — cheap=**deepseek-v4-flash** (thinking off), strong/judge=**deepseek-v4-pro**; deepseek-chat/reasoner deprecated 2026-07-24. Облачного fallback нет (резерв — локальная модель). Детали/цены — CONTRACTS §11 |
-| ADR-8 | Провайдер цен (US, опционально) и его free-tier | **Решено (Q-10) + T-002 (2026-07-10):** дефолт **Stooq** (EOD CSV, без ключа; доступность с RU IP проверена живым запросом); альтернатива Alpha Vantage (ключ, лимитный free-tier). Только end-of-day + кэш |
+| ADR-8 | Провайдер цен (US, опционально) и его free-tier | **Финал (Q-19, T-033, 2026-07-12): Alpha Vantage** (EOD, ключ, лимитный free-tier ~25/день). Изначальный дефолт Stooq (Q-10) отвергнут при реализации — блокирует серверные клиенты бот-детекцией. Только end-of-day + кэш; free-tier = `compact` (~100 дней), глубокая история премиум |
 | ADR-9 | Канал алертов слоя B | **Решено (Q-03):** Telegram |
 | ADR-10 | Границы demo-режима (публичные данные, без пользовательских) | Зафиксировано: US/EDGAR для публичного демо |
 

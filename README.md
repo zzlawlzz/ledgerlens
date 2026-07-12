@@ -3,36 +3,86 @@
 [![CI](https://github.com/zzlawlzz/ledgerlens/actions/workflows/ci.yml/badge.svg)](https://github.com/zzlawlzz/ledgerlens/actions/workflows/ci.yml)
 [![eval](https://github.com/zzlawlzz/ledgerlens/actions/workflows/eval.yml/badge.svg)](https://github.com/zzlawlzz/ledgerlens/actions/workflows/eval.yml)
 
-Self-hostable мультиагентная платформа финансового анализа: вопрос на естественном языке → многошаговый план → агенты (LangGraph, ReAct) работают с фактами отчётности (SQL) и нарративом (RAG) → ответ с числами, динамикой и цитатами на первоисточник, со стримом хода рассуждения в UI (AG-UI). Инструменты — MCP-серверы, межагентное взаимодействие — A2A (в т.ч. между нодами), tiered-роутинг LLM (локальный CPU-инференс + cloud API), eval в CI, наблюдаемость в Grafana.
+**English** · [Русский](README.ru.md)
 
-> ⚠️ Система предоставляет аналитику по публичной отчётности и **не даёт инвестиционных рекомендаций**.
+A self-hostable multi-agent platform for financial analysis. Ask a question in
+plain language → the system builds a multi-step plan → agents (LangGraph +
+ReAct) work over structured filing facts (SQL) and narrative disclosures (RAG)
+→ you get an answer with numbers, trends and **citations to the primary
+source**, streamed reasoning-first into the UI (AG-UI).
 
-**Статус:** MVP (гейт G2). Полный стек в docker compose: оркестратор Plan-and-Execute, A2A-воркер в отдельном контейнере, RAG с цитатами, guardrail non-advice, AG-UI-стрим, React-UI.
+> ⚠️ LedgerLens produces analytics over public filings and **does not give
+> investment advice**. See the non-advice guardrail below.
 
-## Карта документов
+**What makes it different — it acts like an analyst, not a search box:**
 
-| Документ | Что в нём |
-|---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Зафиксированные архитектурные решения: слои, компоненты, источники данных, протоколы, топология |
-| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Фазовый план (4 недели), принципы, ADR, риски, Definition of Done |
-| [CONTRACTS.md](CONTRACTS.md) | Технические контракты: стек, DDL, словарь метрик, схемы инструментов, конвенции, бюджеты |
-| [BACKLOG.md](BACKLOG.md) | Бэклог разработчика: задачи T-001…T-040 по приоритету, с ТЗ и критериями выполнения |
-| [OWNER_QUESTIONS.md](OWNER_QUESTIONS.md) | Вопросы владельцу проекта (решения, блокирующие отдельные задачи) |
+- **Plans** the work explicitly (Plan-and-Execute orchestrator) instead of
+  one-shot prompting.
+- **Self-corrects** — re-plans a step when a result is empty or contradictory,
+  visibly, in the stream.
+- **Cites** every narrative claim back to the exact SEC/MOEX source chunk; a
+  groundedness guardrail strips ungrounded synthesis.
 
-## Быстрый старт (MVP: полный стек + UI)
+## Architecture at a glance
+
+```mermaid
+flowchart TB
+    UI["Web UI (React/TS)<br/>AG-UI event stream"]
+    ORCH["Orchestrator agent<br/>LangGraph · Plan-and-Execute"]
+    W1["Worker agent (ReAct)<br/>local node"]
+    W2["Worker agent (ReAct)<br/>remote node · A2A over AmneziaWG"]
+    SQL["sql_query / schema_introspect<br/>(MCP server)"]
+    RAG["rag_search<br/>(MCP server)"]
+    ENR["price_enrich<br/>(MCP server)"]
+    ROUTER["Model Router (tiered)<br/>local CPU ⇄ cloud API"]
+    PG[("Postgres<br/>facts + pgvector")]
+    QD[("Qdrant<br/>narrative vectors")]
+    ADP["Source adapters<br/>EDGAR · MOEX ISS"]
+    OBS["Grafana · Eval-in-CI"]
+
+    UI <--> ORCH
+    ORCH -- A2A --> W1
+    ORCH -- A2A --> W2
+    W1 --> SQL & RAG & ENR
+    W2 --> SQL & RAG & ENR
+    W1 -. LLM calls .-> ROUTER
+    ORCH -. LLM calls .-> ROUTER
+    SQL --> PG
+    RAG --> QD
+    ENR --> PG
+    ADP --> PG & QD
+    ORCH -. trace .-> OBS
+```
+
+Full layer/component breakdown: [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Features
+
+| Capability | What you see | Proof |
+|---|---|---|
+| **Streamed plan** | The orchestrator's plan and each step appear live as the run executes (AG-UI). | [demo/self_correction.md](demo/self_correction.md) |
+| **Self-correction** | A step that returns nothing gets re-planned and retried, in view. | ![replan](demo/screenshots/self_correction_replan.png) |
+| **Citations** | Narrative answers carry `sec.gov` / MOEX source links per claim. | ![worker](demo/screenshots/self_correction_worker.png) |
+| **Observability** | Latency, cost, local-vs-cloud split and eval quality in Grafana. | ![grafana](demo/screenshots/grafana_operations.png) |
+
+> Static screenshots today; animated GIFs of the three flows are tracked as a
+> follow-up in T-039 (presentation site).
+
+## Quick start (full stack + UI)
 
 ```bash
-cp .env.example .env  # заполнить DEEPSEEK_API_KEY, POSTGRES_PASSWORD, POSTGRES_RO_PASSWORD, A2A_TOKEN
-make demo             # compose up (6 сервисов) + ingest при пустой БД + смоук
+cp .env.example .env   # set DEEPSEEK_API_KEY, POSTGRES_PASSWORD, POSTGRES_RO_PASSWORD, A2A_TOKEN
+make demo              # compose up (6 services) + ingest on empty DB + smoke
 # UI: http://localhost:3000
 ```
 
-`make demo` поднимает postgres, qdrant, ollama (профиль local), оркестратор,
-A2A-воркер и web (nginx); при пустой БД загружает 3 тикера из SEC EDGAR
-(с диск-кэшем) вместе с эмбеддингами и прогоняет смоук: числовые вопросы,
-нарративный вопрос с цитатами, протокол AG-UI, доступность UI.
+`make demo` brings up postgres, qdrant, ollama (the `local` profile),
+orchestrator, A2A worker and web (nginx); on an empty database it ingests SEC
+EDGAR tickers (disk-cached) together with embeddings, then runs a smoke suite:
+numeric questions, a narrative question with citations, the AG-UI protocol and
+UI availability.
 
-Разовый вопрос вручную (debug-эндпоинт):
+One-off question by hand (debug endpoint):
 
 ```bash
 curl -N -X POST http://localhost:8000/api/chat \
@@ -40,42 +90,84 @@ curl -N -X POST http://localhost:8000/api/chat \
      -d '{"question": "What was the revenue of AAPL in its latest fiscal year?"}'
 ```
 
-Ответ стримится как SSE-поток трейс-событий (план, шаги, вызовы инструментов,
-guardrail) и завершается `run_finished` с ответом, key_values и цитатами.
-Фронт использует `POST /agui` (протокол AG-UI). Сценарий самокоррекции — см.
+The answer streams as SSE trace events (plan, steps, tool calls, guardrail) and
+ends with `run_finished` carrying the answer, `key_values` and citations. The
+frontend uses `POST /agui` (the AG-UI protocol). Self-correction scenario:
 [demo/self_correction.md](demo/self_correction.md).
 
-## Наблюдаемость и качество
+## Stack & depth markers
 
-- **Grafana** (T-034): дашборды на `http://localhost:3001` (анонимный viewer) —
-  Operations (латентность, стоимость, local-vs-cloud, ошибки), Session
-  drill-down по `run_id`, Quality (метрики eval по прогонам). Источник —
-  таблицы `runs/steps/llm_calls/tool_calls/eval_*` через read-only роль
-  `grafana_ro`.
-- **Eval** (T-028/T-029/T-030): golden-набор из 41 кейса (`eval/golden/`),
-  раннер `uv run python -m eval.run --profile ci|full`, гейт в CI
-  (`.github/workflows/eval.yml`) с порогами `config/eval-thresholds.yaml`.
-- **MCP-инструменты** (T-027): sql/rag/enrich — отдельные MCP-сервисы;
-  воркер подключается как MCP-клиент (в lib-режиме для юнит-тестов).
+- **Agent protocols:** MCP tool servers · A2A between agents (incl. across
+  nodes) · AG-UI event stream to the browser.
+- **Two-node topology:** worker runs local or on a remote VPS reached over an
+  AmneziaWG mesh (T-031, gate G3) — same A2A contract either way.
+- **Tiered LLM routing:** cheap/local CPU inference for classify/extract/guard,
+  cloud API (DeepSeek `flash`/`pro`) for planning & synthesis, provider-agnostic
+  behind one interface.
+- **Eval-in-CI:** a 41-case golden set gated in GitHub Actions
+  (`.github/workflows/eval.yml`) with thresholds in
+  `config/eval-thresholds.yaml`.
+- **Observability:** every run's steps/tokens/cost/latency land in Postgres and
+  surface in Grafana (read-only role).
+- **Stack:** Python (FastAPI, LangGraph), React/TypeScript, Postgres+pgvector,
+  Qdrant, Ollama, Docker Compose. Exact pins: [CONTRACTS.md](CONTRACTS.md).
 
-## Известные ограничения
+## Links
 
-- **Одна вычислительная нода**: воркер общается по A2A, но живёт в том же
-  compose; вторая нода (VPS) — T-031 (гейт G3, разблокирована).
-- **faithfulness**: метрика groundedness временно `non_blocking` в
-  eval-гейте, пока не закрыт T-041 (синтез не должен дополнять
-  retrieved-контекст) — считается и репортится, но не роняет CI.
-- **Цены (T-033)**: инструмент готов, но Stooq блокирует серверные клиенты
-  бот-детекцией — нужен другой EOD-провайдер (см. Q-19). Основной анализ
-  от этого не страдает (честная деградация).
-- **Скорость на слабом CPU**: локальный тир (classify/extract/guard) на
-  dev-машине медленный; мультишаговые вопросы занимают минуты. Целевое
-  железо — домашняя нода (бенчмарк T-037).
-- **Данные**: демо-набор EDGAR (10 тикеров × 3 года); RU-режим (MOEX,
-  T-032) — цены загружаются, вопрос-по-ценам в доводке.
+- **Live demo:** https://app.ledgerlens.space *(public, rate- and budget-limited;
+  served from a self-hosted node behind a Cloudflare Tunnel — may be offline
+  during maintenance).*
+- **Grafana dashboards:** `http://localhost:3001` when self-hosting (anonymous
+  Viewer) — Operations, Session drill-down, Quality.
+- **Benchmark reports:**
+  [inference (CPU vs API)](benchmarks/inference/REPORT.md) ·
+  [vector store (pgvector vs Qdrant)](benchmarks/vector/REPORT.md).
+- **Runbooks:** [MOEX ingest](docs/moex-ingest.md) ·
+  [demo seed/snapshot](deploy/demo/README.md) ·
+  [demo security](deploy/demo/SECURITY.md).
 
-## Источники данных и лицензии
+## Data sources & licensing
 
-- **SEC EDGAR** — бесплатный доступ; запросы уходят с обязательным `User-Agent` и rate-limit согласно правилам SEC.
-- **MOEX ISS** (RU-режим) — данные ИСС Московской биржи используются в этом проекте **только в ознакомительных/демонстрационных целях**; доступ — к бесплатным задержанным данным, без API-ключа. Коммерческое использование, перепродажа или иное извлечение прибыли из данных ISS требуют отдельного соглашения с Московской биржей. Клиент кэширует ответы (`data/cache/moex`) и держит паузу между запросами; ingest RU-источников выполняется с ноды с чистым доступом (см. [docs/moex-ingest.md](docs/moex-ingest.md)).
-- Подробнее — §5 [ARCHITECTURE.md](ARCHITECTURE.md).
+- **SEC EDGAR** — free access; requests carry the mandatory `User-Agent` and
+  honour SEC rate limits (fair-use / bulk-access terms).
+- **MOEX ISS** (RU mode) — Moscow Exchange ISS data is used here **for
+  informational / demonstration purposes only**, over the free delayed feed and
+  without an API key. Commercial use, redistribution or otherwise profiting from
+  ISS data requires a separate agreement with Moscow Exchange. The client caches
+  responses (`data/cache/moex`) and paces requests; RU ingest runs from a node
+  with clean access (see [docs/moex-ingest.md](docs/moex-ingest.md)).
+- Details — §5 of [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Non-advice disclaimer
+
+LedgerLens analyses **public** company filings and market data. It is **not**
+an investment adviser and produces **no** buy/sell/hold recommendations,
+price targets or personalised financial advice. A guardrail (`non_advice`)
+inspects every synthesized answer and blocks advice-shaped output. Nothing here
+is a solicitation to transact in any security. Verify figures against the cited
+primary source before relying on them.
+
+## Document map
+
+| Document | What's inside |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Fixed architecture: layers, components, data sources, protocols, topology |
+| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Phased plan, principles, ADRs, risks, Definition of Done |
+| [CONTRACTS.md](CONTRACTS.md) | Technical contracts: stack, DDL, metric dictionary, tool schemas, budgets |
+| [CHANGELOG.md](CHANGELOG.md) | Release history by gate (G1…G4) |
+| [BACKLOG.md](BACKLOG.md) | Developer backlog: tasks T-001…T-041 with specs and acceptance |
+
+## Project status
+
+Gates **G1 ✅ G2 ✅**; core tasks T-001…T-037 delivered, G3 (two-node) and G4
+(v1.0 release) in progress. Current known limitations:
+
+- **faithfulness** groundedness metric is temporarily `non_blocking` in the eval
+  gate while T-041 closes (synthesis must not augment retrieved context) — it is
+  computed and reported, it just doesn't fail CI yet.
+- **Two-node deployment** (T-031, gate G3): dispatcher with round-robin +
+  local-preferred failover is done; the live remote-node deploy over AmneziaWG
+  is the remaining step.
+- **Local CPU tier** is slow on a dev laptop; multi-step questions take minutes.
+  Target hardware is a home node — see the [inference
+  benchmark](benchmarks/inference/REPORT.md) (local CPU part pending the node).
