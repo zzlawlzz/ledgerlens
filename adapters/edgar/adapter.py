@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from adapters.base import DataSourceAdapter, register_adapter
 from adapters.edgar.client import EdgarClient
 from adapters.edgar.facts import extract_financial_facts
-from adapters.edgar.sections import extract_sections_from_html, section_title
+from adapters.edgar.sections import clean_10k_html, extract_sections_from_html, section_title
 from common.errors import ToolError
 from common.logging import get_logger
 from common.models import Company, Event, Filing, FilingSection, FinancialFact
@@ -145,6 +145,26 @@ class EdgarAdapter(DataSourceAdapter):
 
     async def poll_events(self, watchlist: list[Company], since: datetime) -> list[Event]:
         raise ToolError(
-            "EDGAR event polling is implemented with monitoring layer B (T-035)",
+            "EDGAR event polling runs in n8n (monitoring layer B, T-035); the "
+            "orchestrator only ingests + summarizes what n8n pushes",
             retryable=False,
         )
+
+    async def fetch_event_text(self, event_ref: dict[str, object]) -> str:
+        """8-K primary document flattened to plain text (layer B, T-035).
+
+        ``event_ref`` is the stored event payload; n8n copies cik / accession /
+        primary_document straight from the submissions index. Missing fetch
+        coordinates yield "" so the caller reports ``no_text`` honestly.
+        """
+        cik = event_ref.get("cik")
+        accession = event_ref.get("accession")
+        primary_document = event_ref.get("primary_document")
+        if not (cik and accession and primary_document):
+            return ""
+        html = await self._client.get_archive_document(
+            cik,  # type: ignore[arg-type]  # validated truthy above
+            str(accession),
+            str(primary_document),
+        )
+        return clean_10k_html(html)

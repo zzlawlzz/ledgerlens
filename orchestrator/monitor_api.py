@@ -14,8 +14,8 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from adapters.edgar.client import EdgarClient
-from adapters.edgar.sections import clean_10k_html
+import adapters  # noqa: F401  — importing registers the source adapters
+from adapters.base import DataSourceAdapter, get_adapter
 from common.config import get_settings, load_yaml_config
 from common.logging import get_logger
 from model_router.router import RouterClient
@@ -32,7 +32,7 @@ monitor_router = APIRouter(prefix="/api/monitor", tags=["monitoring"])
 
 # Lazily-built process singletons (one orchestrator instance in the demo).
 _router_client: RouterClient | None = None
-_edgar_client: EdgarClient | None = None
+_adapters: dict[str, DataSourceAdapter] = {}
 _budget: DailyBudget | None = None
 _summarize_lock = asyncio.Semaphore(1)  # ≤1 summarize in flight (ТЗ item 5)
 
@@ -62,29 +62,21 @@ def _get_budget() -> DailyBudget:
     return _budget
 
 
-def _get_edgar_client() -> EdgarClient:
-    global _edgar_client
-    if _edgar_client is None:
-        _edgar_client = EdgarClient()
-    return _edgar_client
+def _get_adapter(source: str) -> DataSourceAdapter:
+    """Resolve a source adapter via the registry (keeps this module source-
+    agnostic — no direct EDGAR import; see tests/unit/test_pluggable_purity)."""
+    if source not in _adapters:
+        _adapters[source] = get_adapter(source)
+    return _adapters[source]
 
 
-async def _edgar_text_fetcher(payload: dict[str, Any]) -> str:
-    """Fetch + flatten an 8-K primary document to plain text.
+def _make_text_fetcher(source: str) -> Any:
+    """A ``TextFetcher`` bound to one source, going through the adapter interface."""
 
-    Needs ``cik``, ``accession`` and ``primary_document`` in the event payload
-    (n8n copies them straight from the submissions index). Missing coordinates
-    yield an empty string → the caller reports ``no_text`` honestly.
-    """
-    cik = payload.get("cik")
-    accession = payload.get("accession")
-    primary_document = payload.get("primary_document")
-    if not (cik and accession and primary_document):
-        return ""
-    html = await _get_edgar_client().get_archive_document(
-        cik, str(accession), str(primary_document)
-    )
-    return clean_10k_html(html)
+    async def fetch(payload: dict[str, Any]) -> str:
+        return await _get_adapter(source).fetch_event_text(payload)
+
+    return fetch
 
 
 # --- request/response models ----------------------------------------------
@@ -131,7 +123,7 @@ async def summarize_endpoint(
             body.source,
             body.external_id,
             router=_get_router(),
-            fetch_text=_edgar_text_fetcher,
+            fetch_text=_make_text_fetcher(body.source),
             budget=_get_budget(),
         )
     return {

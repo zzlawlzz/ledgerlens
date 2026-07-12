@@ -42,6 +42,16 @@ class DataSourceAdapter(ABC):
     async def poll_events(self, watchlist: list[Company], since: datetime) -> list[Event]:
         """New disclosure events after ``since`` (monitoring layer B)."""
 
+    async def fetch_event_text(self, event_ref: dict[str, Any]) -> str:
+        """Plain text of a monitored event's primary document (layer B, T-035).
+
+        ``event_ref`` is the stored ``monitored_events.payload`` — its shape is
+        source-specific (EDGAR: cik/accession/primary_document). Not abstract:
+        sources without a monitoring implementation (RU stubs) inherit a clear
+        NotImplementedError instead of being forced to override it.
+        """
+        raise NotImplementedError(f"{type(self).__name__} has no event-text fetch (T-035)")
+
 
 _REGISTRY: dict[str, type[DataSourceAdapter]] = {}
 
