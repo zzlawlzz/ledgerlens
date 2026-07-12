@@ -194,7 +194,14 @@ async def run_call(cand: Candidate, prompt: BenchPrompt) -> CallResult:
         # fall back to a token estimate below).
         async for chunk in cand.chat_model.astream(messages, stream_usage=True):
             content = chunk.content if isinstance(chunk.content, str) else ""
-            if content and ttft is None:
+            # Reasoning models (cloud_strong, thinking=enabled) stream their
+            # chain-of-thought as `reasoning_content` *before* any visible
+            # answer token. TTFT = first sign of life of either kind, so the
+            # tok/s denominator (total - ttft) spans the whole generation the
+            # usage token count covers — otherwise the visible answer arrives
+            # as one final burst and tok/s explodes to nonsense.
+            reasoning = chunk.additional_kwargs.get("reasoning_content") or ""
+            if (content or reasoning) and ttft is None:
                 ttft = time.perf_counter() - t0
             if content:
                 parts.append(content)
@@ -225,8 +232,12 @@ async def run_call(cand: Candidate, prompt: BenchPrompt) -> CallResult:
     tokens_in = usage["in"] if usage else 0
     # Estimate output tokens when the endpoint gave no usage (≈4 chars/token).
     tokens_out = usage["out"] if usage else max(1, round(len(text) / 4))
-    gen_s = max(total - ttft, 1e-6)
-    tok_per_s = tokens_out / gen_s
+    # End-to-end output throughput: output tokens over the full wall clock.
+    # This is apples-to-apples across a genuinely token-streaming model
+    # (cloud_cheap) and one that buffers reasoning + answer into a final burst
+    # (cloud_strong, thinking=enabled) — a "generation-phase" tok/s of
+    # tokens_out/(total-ttft) explodes to nonsense when ttft≈total.
+    tok_per_s = tokens_out / max(total, 1e-6)
     return CallResult(
         prompt_id=prompt.id,
         task_class=prompt.task_class,
@@ -410,8 +421,8 @@ def write_report(summaries: list[ModelSummary], *, repeats: int, judged: bool) -
         f"({', '.join(TASK_CLASSES)}), {repeats} repeat(s) each — see `prompts.py`."
     )
     lines.append(
-        "- **Metrics:** TTFT (first streamed token), tok/s (output tokens / "
-        "generation time), full latency (p50/p95), USD cost, judge quality (1–5)."
+        "- **Metrics:** TTFT (first streamed signal), tok/s (output tokens ÷ "
+        "full latency, end-to-end), latency (p50/p95), USD cost, judge quality (1–5)."
     )
     lines.append(
         "- **Pricing:** API from `config/prices.yaml` (same table the orchestrator "
@@ -476,10 +487,18 @@ def write_report(summaries: list[ModelSummary], *, repeats: int, judged: bool) -
         "marginal-cost comparison, not a claim that local is free."
     )
     lines.append(
-        "- **TTFT/tok/s are streaming measurements.** tok/s = output tokens ÷ "
-        "(latency − TTFT); when an endpoint returns no token usage, output "
-        "tokens are estimated at ≈4 chars/token (flagged; DeepSeek returns real "
-        "usage, some ollama builds do not)."
+        "- **tok/s is end-to-end output throughput** = output tokens ÷ full "
+        "latency. This is apples-to-apples across a genuinely token-streaming "
+        "model (cloud_cheap) and one that buffers reasoning+answer into a final "
+        "burst (cloud_strong, `thinking=enabled`) — a generation-phase tok/s of "
+        "`tokens/(latency−TTFT)` explodes when TTFT≈latency. When an endpoint "
+        "returns no usage, output tokens are estimated at ≈4 chars/token "
+        "(flagged; DeepSeek returns real usage, some ollama builds do not)."
+    )
+    lines.append(
+        "- **TTFT = first streamed signal of any kind**, including a reasoning "
+        "model's chain-of-thought; for `thinking=enabled` the answer arrives as "
+        "one burst, so TTFT≈latency reflects real perceived wait."
     )
     lines.append(
         "- Single-thread, warm client; no concurrency modelling. Outputs are "
