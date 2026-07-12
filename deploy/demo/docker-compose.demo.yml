@@ -1,0 +1,71 @@
+# Public-demo hardening overlay (T-036 §3).
+#
+# Usage:  docker compose -f docker-compose.yml -f deploy/demo/docker-compose.demo.yml up -d
+#
+# What this overlay does (and does NOT):
+#   * Selects the `demo` budget profile on the app and worker so the admission
+#     limits (T-036 §1) and the tight demo run-budget (config/budgets.yaml) are
+#     active. In demo the app also drops /docs, /redoc and /openapi.json.
+#   * Adds `no-new-privileges` to every long-running service (a process can no
+#     longer gain privileges via setuid binaries — cheap defence in depth).
+#
+# What it deliberately does NOT do — and why the public surface is still safe:
+#   Compose *concatenates* the `ports:` lists of merged files, so an overlay
+#   cannot REMOVE a host port that the base file publishes. The public-demo
+#   boundary is therefore NOT "unpublish the ports here" but the two layers the
+#   runbook (deploy/demo/README.md) and SECURITY.md require on the demo node:
+#     1. Cloudflare Tunnel (Q-05, §4): cloudflared makes an OUTBOUND connection
+#        and its ingress routes ONLY the web hostname -> web:80 (optionally a
+#        grafana-view hostname). Nothing else has a public route.
+#     2. Host firewall (ufw) denies ALL inbound; the published host ports stay
+#        reachable only from the node itself, which is where cloudflared runs.
+#   See deploy/demo/SECURITY.md for the executed checklist and the ufw snippet.
+
+services:
+  app:
+    environment:
+      BUDGET_PROFILE: demo
+    security_opt:
+      - no-new-privileges:true
+
+  worker:
+    environment:
+      # The worker reads BUDGET_PROFILE for its per-step deadline (graph.py /
+      # config/budgets.yaml). Keep it aligned with the app.
+      BUDGET_PROFILE: demo
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    security_opt:
+      - no-new-privileges:true
+
+  grafana:
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    security_opt:
+      - no-new-privileges:true
+
+  qdrant:
+    security_opt:
+      - no-new-privileges:true
+
+  mcp-sql:
+    environment:
+      BUDGET_PROFILE: demo
+    security_opt:
+      - no-new-privileges:true
+
+  mcp-rag:
+    environment:
+      BUDGET_PROFILE: demo
+    security_opt:
+      - no-new-privileges:true
+
+  mcp-enrich:
+    environment:
+      BUDGET_PROFILE: demo
+    security_opt:
+      - no-new-privileges:true
