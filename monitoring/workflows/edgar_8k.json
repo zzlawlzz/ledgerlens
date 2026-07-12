@@ -1,0 +1,86 @@
+{
+  "name": "LedgerLens — EDGAR 8-K monitor (layer B)",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "minutes", "minutesInterval": 30 } ] }
+      },
+      "id": "b1a1e0c0-0000-4000-8000-000000000001",
+      "name": "Every 30 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [ 240, 300 ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Poll the EDGAR submissions index for each watched company and emit\n// the 8-K filings from the last few days as monitored-event objects.\n// Self-contained (no paired items): carries cik through the same closure.\nconst userAgent = $env.EDGAR_USER_AGENT || 'ledgerlens monitoring zzlawlzz5@gmail.com';\n\n// --- edit here: the watchlist (10-digit CIKs) and the lookback window ---\nconst watchlist = [\n  { cik: '0000320193', ticker: 'AAPL' },\n  { cik: '0000789019', ticker: 'MSFT' },\n  { cik: '0001045810', ticker: 'NVDA' },\n];\nconst lookbackDays = 3;\n// -----------------------------------------------------------------------\n\nconst cutoff = new Date(Date.now() - lookbackDays * 864e5);\nconst events = [];\nfor (const { cik } of watchlist) {\n  const url = `https://data.sec.gov/submissions/CIK${cik}.json`;\n  let data;\n  try {\n    data = await this.helpers.httpRequest({ url, headers: { 'User-Agent': userAgent }, json: true });\n  } catch (e) {\n    continue; // a single company being unreachable must not drop the whole tick\n  }\n  const recent = (data.filings && data.filings.recent) || {};\n  const forms = recent.form || [];\n  for (let i = 0; i < forms.length; i++) {\n    if (forms[i] !== '8-K') continue;\n    const filed = new Date(recent.filingDate[i]);\n    if (isNaN(filed.getTime()) || filed < cutoff) continue;\n    const accession = recent.accessionNumber[i];\n    const primaryDocument = recent.primaryDocument[i];\n    const accNoDash = String(accession).replace(/-/g, '');\n    const sourceUrl = `https://www.sec.gov/Archives/edgar/data/${parseInt(cik, 10)}/${accNoDash}/${primaryDocument}`;\n    events.push({\n      source: 'edgar',\n      external_id: accession,\n      event_type: '8-K',\n      company_external_id: cik,\n      occurred_at: filed.toISOString(),\n      source_url: sourceUrl,\n      payload: { cik, accession, primary_document: primaryDocument, form: '8-K' },\n    });\n  }\n}\nreturn [{ json: { events } }];\n"
+      },
+      "id": "b1a1e0c0-0000-4000-8000-000000000002",
+      "name": "Fetch recent 8-K events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 480, 300 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEDGERLENS_API_URL }}/api/monitor/ingest-events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [ { "name": "X-Monitor-Token", "value": "={{ $env.MONITOR_TOKEN }}" } ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { events: $json.events } }}",
+        "options": {}
+      },
+      "id": "b1a1e0c0-0000-4000-8000-000000000003",
+      "name": "Ingest events (dedup)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 720, 300 ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The ingest endpoint returns only the genuinely new events (deduped by\n// UNIQUE(source, external_id)). Fan them out, one item per new event, so the\n// summarize node runs once per new filing.\nconst resp = $input.first().json || {};\nconst newIds = resp.new || [];\nreturn newIds.map((id) => ({ json: { source: 'edgar', external_id: id } }));\n"
+      },
+      "id": "b1a1e0c0-0000-4000-8000-000000000004",
+      "name": "Fan out new events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 960, 300 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEDGERLENS_API_URL }}/api/monitor/summarize",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [ { "name": "X-Monitor-Token", "value": "={{ $env.MONITOR_TOKEN }}" } ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { source: $json.source, external_id: $json.external_id } }}",
+        "options": {}
+      },
+      "id": "b1a1e0c0-0000-4000-8000-000000000005",
+      "name": "Summarize + alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 1200, 300 ]
+    }
+  ],
+  "connections": {
+    "Every 30 minutes": { "main": [ [ { "node": "Fetch recent 8-K events", "type": "main", "index": 0 } ] ] },
+    "Fetch recent 8-K events": { "main": [ [ { "node": "Ingest events (dedup)", "type": "main", "index": 0 } ] ] },
+    "Ingest events (dedup)": { "main": [ [ { "node": "Fan out new events", "type": "main", "index": 0 } ] ] },
+    "Fan out new events": { "main": [ [ { "node": "Summarize + alert", "type": "main", "index": 0 } ] ] }
+  },
+  "pinData": {},
+  "meta": { "templateId": "ledgerlens-edgar-8k" },
+  "tags": [ { "name": "ledgerlens" } ]
+}
