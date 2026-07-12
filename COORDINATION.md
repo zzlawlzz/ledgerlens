@@ -137,6 +137,35 @@ free-tier: только compact (~100 дней), история за стары�
 
 ## Журнал (append-only, новые записи сверху)
 
+### 2026-07-12 ~13:30 · оркестратор — сессия с владельцем: Q-22=A раннер, T-035 TG live, T-036 §4 ДЕМО ЖИВОЕ, T-031→AWG
+Владелец на связи, роздал гринлайты. Сделано:
+1. **T-036 §4 ЗАВЕРШЁН — публичное демо ЖИВОЕ:** `https://app.ledgerlens.space`
+   отдаёт UI 200 + API 200 по TLS Cloudflare (`269c49f`). Добавил `cloudflared`
+   в твой demo-overlay (токен из .env `CLOUDFLARE_TUNNEL_TOKEN`, gitignored), app
+   в `BUDGET_PROFILE=demo` (лимиты активны). **2 фикса:** (а) `--protocol http2`
+   (дефолтный QUIC/UDP режется RU-аплинком → «failed to dial quic»); (б) обновил
+   README §4 + таблицу статусов (§1/§2/§3/§5 были помечены pending — исправил на
+   done). **Демо крутится на Ryzen-ПК (эта машина) — Docker Desktop флейкует;
+   рекомендую перенести на EPYC (always-on, стабильный Docker).**
+2. **Q-22=A — self-hosted runner на EPYC (`192.168.1.115`) поднят сервисом**
+   (`epyc-home`, лейбл `ledgerlens-epyc`; 128C/125GB, Docker+compose+группа, HF
+   доступен). eval.yml → `runs-on: [self-hosted, ledgerlens-epyc]` (`51b2f40`).
+   1-й прогон упал на правах ФС (`~/.cache/huggingface/xet` Permission denied) →
+   фикс `HF_HUB_DISABLE_XET=1` + chown кэша (`77e2f83`). **Ревалидирующий full
+   `29194112519` ИДЁТ на EPYC** (прошёл шаг warm-up, где падал) — валидирует
+   citation=1.0 на реальном железе → закрытие T-041.
+3. **T-035 Telegram — доставка ДОКАЗАНА живьём** (владелец разрешил): 2 сообщения
+   ушли в его чат через прокси-туннель VPS (прямой api.telegram.org с RU-IP = HTTP
+   000). Код-фикс: настройка `telegram_proxy_url` в `send_alert` (`312b5ae`),
+   +тест, 312 юнитов. `.env`: `TELEGRAM_PROXY_URL` (в compose-контейнере =
+   `host.docker.internal:18888`).
+4. **T-031 → AmneziaWG:** артефакты `deploy/worker-node/` переписаны с WG на AWG
+   (`fc9e10b`, владелец предпочёл amnezia против DPI). Живой VPS-деплой — «go»
+   есть; ждёт решения по топологии (стек на Ryzen vs EPYC).
+**ОТКРЫТО (владелец):** T-031 топология (Ryzen vs EPYC для стека/туннеля).
+**Урок закреплён:** `git push` ПЕРЕД `gh workflow run` (ранние мои прогоны гоняли
+старый HEAD).
+
 ### 2026-07-12 12:40 · регулярная сессия — ✅ T-036 §1 (demo-лимиты допуска) done кодом+тестами
 T-041 заблокирован решением владельца (Q-22 citation = инфра-потолок), ревалидация
 дедлайна `29186117639` шла (Run eval, ~38м) — не блокирует. Взяла непересекающийся
