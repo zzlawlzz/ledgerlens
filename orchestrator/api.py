@@ -141,7 +141,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="LedgerLens API", lifespan=_lifespan)
+# Public demo (T-036 §3) is a hardened surface: the interactive API schema and
+# Swagger/ReDoc explorers are debug affordances, so they are switched off when
+# BUDGET_PROFILE=demo. Off the demo profile (dev) they stay on for convenience.
+_DEMO = get_settings().budget_profile == "demo"
+app = FastAPI(
+    title="LedgerLens API",
+    lifespan=_lifespan,
+    docs_url=None if _DEMO else "/docs",
+    redoc_url=None if _DEMO else "/redoc",
+    openapi_url=None if _DEMO else "/openapi.json",
+)
 app.include_router(monitor_router)  # T-035 monitoring layer B (/api/monitor/*)
 
 
