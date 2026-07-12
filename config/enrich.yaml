@@ -1,10 +1,12 @@
-# price_enrich provider settings (T-033; CONTRACTS.md §9).
-# Stooq EOD CSV, no API key. Free-tier discipline: at most one external
-# request per min_interval_s and at most daily_request_limit per UTC day
-# (in-process counters; the prices table is the durable cache).
+# price_enrich provider settings (T-033; CONTRACTS.md §9; Q-19).
+# Alpha Vantage TIME_SERIES_DAILY (free API key in ALPHAVANTAGE_API_KEY).
+# Free-tier discipline: at most one external request per min_interval_s and
+# at most daily_request_limit per UTC day (in-process counters); the prices
+# table is the durable cache, so a demo hits the provider once per
+# ticker/range and serves everything else from cache.
 provider:
-  name: stooq
-  base_url: https://stooq.com/q/d/l/
-  timeout_s: 10
+  name: alphavantage
+  base_url: https://www.alphavantage.co/query
+  timeout_s: 15
   min_interval_s: 1.0
-  daily_request_limit: ${ENRICH_DAILY_LIMIT:500}
+  daily_request_limit: ${ENRICH_DAILY_LIMIT:25}

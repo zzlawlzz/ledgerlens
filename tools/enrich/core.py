@@ -1,21 +1,26 @@
 """price_enrich tool core (T-033; CONTRACTS.md §9).
 
 End-of-day close prices for one ticker: the ``prices`` table is checked
-first (natural durable cache), on a miss the Stooq EOD CSV endpoint (no API
-key) is fetched with retries and the rows are upserted back into ``prices``.
-Errors come back as *observations* (``{error, retryable}``), never as
-exceptions — the analysis degrades honestly instead of crashing the run
-(same philosophy as tools/sql/core.py).
+first (natural durable cache), on a miss the Alpha Vantage TIME_SERIES_DAILY
+endpoint (free API key) is fetched with retries and the rows are upserted
+back into ``prices``. Errors come back as *observations*
+(``{error, retryable}``), never as exceptions — the analysis degrades
+honestly instead of crashing the run (same philosophy as tools/sql/core.py).
 
-Free-tier discipline (BACKLOG T-033): a process-local ``ProviderLimiter``
-paces external requests (min interval between calls) and caps them per UTC
-day (``config/enrich.yaml``, default 500). A spent daily budget is an
-observation error, not a crash; cached ranges keep working.
+Free-tier discipline (BACKLOG T-033; Q-19): a process-local
+``ProviderLimiter`` paces external requests (min interval between calls) and
+caps them per UTC day (``config/enrich.yaml``, default 25 for the Alpha
+Vantage free tier). A spent daily budget is an observation error, not a
+crash; cached ranges keep working — so a demo hits the provider once per
+ticker/range and serves everything else from ``prices``.
 
-Live note (2026-07-11): stooq.com fronts ``/q/d/l/`` with a JavaScript
-bot-verification page for non-browser clients on some networks. Such a
-response is not CSV and is reported as a retryable provider-unavailable
-observation — see ``parse_stooq_csv`` returning ``None``.
+Provider note (Q-19, 2026-07-12): the original default (Stooq) fronts its
+CSV endpoint with a JavaScript proof-of-work challenge for non-browser
+clients, so a server-side client never gets CSV. Switched to Alpha Vantage,
+which serves JSON to API-key clients without a challenge. Alpha Vantage
+returns HTTP 200 even for rate-limit/error bodies, so the parser inspects
+the JSON keys: a rate-limit note is a retryable provider-unavailable
+observation, an error message is treated as "no rows".
 """
 
 from __future__ import annotations
@@ -38,19 +43,21 @@ from tenacity import (
     wait_exponential,
 )
 
-from common.config import load_yaml_config
+from common.config import get_settings, load_yaml_config
 from common.db import get_session_factory
 from common.errors import ConfigError, SourceUnavailableError, ToolError
 from common.logging import get_logger
 
-STOOQ_BASE_URL = "https://stooq.com/q/d/l/"
-SOURCE_NAME = "stooq"
-CURRENCY = "USD"  # Stooq *.us symbols quote in USD (EOD only per contract)
+ALPHAVANTAGE_BASE_URL = "https://www.alphavantage.co/query"
+SOURCE_NAME = "alphavantage"
+CURRENCY = "USD"  # US listings quote in USD (EOD close only, per contract)
 USER_AGENT = "ledgerlens/0.1"
+_AV_SERIES_KEY = "Time Series (Daily)"
+_AV_CLOSE_KEY = "4. close"
 
 DEFAULT_MIN_INTERVAL_S = 1.0
-DEFAULT_DAILY_LIMIT = 500
-DEFAULT_TIMEOUT_S = 10.0
+DEFAULT_DAILY_LIMIT = 25  # Alpha Vantage free tier (Q-19)
+DEFAULT_TIMEOUT_S = 15.0
 RETRY_ATTEMPTS = 3
 RETRY_WAIT_BASE_S = 0.5
 
@@ -183,50 +190,70 @@ def _validate_date(value: Any, name: str) -> str | None:
     return None
 
 
-def parse_stooq_csv(payload: str) -> list[tuple[date, float]] | None:
-    """Stooq EOD CSV -> [(date, close)]; ``None`` when the payload is not CSV.
+def parse_alphavantage_json(
+    payload: str, date_from: date, date_to: date
+) -> list[tuple[date, float]] | None:
+    """Alpha Vantage TIME_SERIES_DAILY JSON -> [(date, close)] within range.
 
-    ``None`` covers HTML bot-verification pages and other unexpected bodies
-    (retryable provider problem); an empty list is a *valid* answer meaning
-    the provider knows no rows for this symbol/range.
+    ``None`` = retryable provider problem (rate-limit note, malformed body);
+    an empty list is a *valid* answer meaning no rows for this symbol/range.
+    Alpha Vantage returns HTTP 200 even for these, so the body's keys decide:
+    - ``Time Series (Daily)`` present  -> parse and filter to [from, to];
+    - ``Note``/``Information``          -> rate/limit -> None (retryable);
+    - ``Error Message``                -> unknown symbol -> [] (no rows).
     """
-    stripped = payload.strip()
-    if not stripped or stripped.startswith("<"):
+    import json
+
+    try:
+        data = json.loads(payload)
+    except (TypeError, ValueError):
         return None
-    lines = stripped.splitlines()
-    header = [column.strip() for column in lines[0].split(",")]
-    if "Close" not in header or header[0] != "Date":
-        return [] if "no data" in lines[0].lower() else None
-    close_index = header.index("Close")
+    if not isinstance(data, dict):
+        return None
+    series = data.get(_AV_SERIES_KEY)
+    if not isinstance(series, dict):
+        if "Error Message" in data:
+            return []  # symbol not covered by this provider -> honest "no rows"
+        return None  # Note/Information (rate limit) or unexpected shape
     points: list[tuple[date, float]] = []
-    for line in lines[1:]:
-        parts = line.split(",")
-        if len(parts) <= close_index:
-            continue
+    for day_str, values in series.items():
         try:
-            points.append((date.fromisoformat(parts[0].strip()), float(parts[close_index])))
-        except ValueError:
+            day = date.fromisoformat(day_str)
+            close = float(values[_AV_CLOSE_KEY])
+        except (ValueError, KeyError, TypeError):
             continue
+        if date_from <= day <= date_to:
+            points.append((day, close))
     return points
 
 
-async def _fetch_stooq_csv(
-    ticker: str, date_from: date, date_to: date, limiter: ProviderLimiter
-) -> str:
+async def _fetch_alphavantage(ticker: str, limiter: ProviderLimiter) -> str:
     """One provider download with pacing, daily cap and retries.
 
-    Raises ``ToolError``/``SourceUnavailableError`` — the caller converts
-    them into observation errors. Every retry attempt consumes one unit of
-    the daily budget (it is a real external request).
+    Alpha Vantage's daily endpoint has no date-range parameters — it returns
+    the full history (``outputsize=full``) and the caller filters. Raises
+    ``ToolError``/``SourceUnavailableError``; the caller converts them into
+    observation errors. Every attempt consumes one unit of the daily budget.
     """
     config = _provider_config()
-    base_url = str(config.get("base_url", STOOQ_BASE_URL))
+    base_url = str(config.get("base_url", ALPHAVANTAGE_BASE_URL))
     timeout_s = float(config.get("timeout_s", DEFAULT_TIMEOUT_S))
+    api_key = get_settings().alphavantage_api_key
+    if not api_key:
+        raise ToolError(
+            "price provider not configured (ALPHAVANTAGE_API_KEY is unset)",
+            retryable=False,
+            hint="Set ALPHAVANTAGE_API_KEY in .env to enable live price data.",
+        )
     params = {
-        "s": f"{ticker.lower()}.us",
-        "d1": date_from.strftime("%Y%m%d"),
-        "d2": date_to.strftime("%Y%m%d"),
-        "i": "d",
+        "function": "TIME_SERIES_DAILY",
+        "symbol": ticker.upper(),
+        # Free tier only allows "compact" (last ~100 trading days);
+        # "full" (all history) is a premium feature (Q-19). So the tool
+        # answers recent price dynamics; ranges older than ~5 months fall
+        # outside the window and return an honest empty series.
+        "outputsize": "compact",
+        "apikey": api_key,
     }
 
     async def _once() -> str:
@@ -301,10 +328,11 @@ async def price_enrich(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     limiter: ProviderLimiter | None = None,
 ) -> dict[str, Any]:
-    """EOD close series per CONTRACTS.md §9: cache (``prices``) then Stooq.
+    """EOD close series per CONTRACTS.md §9: cache (``prices``) then provider.
 
-    Returns ``{"series": [{date, close, currency}], "source": "db"|"stooq",
-    "cached": bool}`` or an observation error ``{"error", "retryable"}``.
+    Returns ``{"series": [{date, close, currency}], "source":
+    "db"|"alphavantage", "cached": bool}`` or an observation error
+    ``{"error", "retryable"}``.
     """
     log = get_logger(node="price_enrich")
     if not isinstance(ticker, str) or not _TICKER_RE.match(ticker.strip()):
@@ -373,17 +401,14 @@ async def price_enrich(
         return {"series": _serialize(cached_points), "source": "db", "cached": True}
 
     try:
-        payload = await _fetch_stooq_csv(
-            normalized_ticker, parsed_from, parsed_to, limiter or get_limiter()
-        )
+        payload = await _fetch_alphavantage(normalized_ticker, limiter or get_limiter())
     except ToolError as error:
         return _error_observation(str(error), retryable=error.retryable, hint=error.hint)
 
-    points = parse_stooq_csv(payload)
+    points = parse_alphavantage_json(payload, parsed_from, parsed_to)
     if points is None:
         return _error_observation(
-            "price provider returned an unexpected non-CSV response "
-            "(possibly a bot-verification page)",
+            "price provider returned an unexpected response (rate limit reached or malformed body)",
             retryable=True,
             hint="Price data is unavailable right now; continue the analysis without it.",
         )
