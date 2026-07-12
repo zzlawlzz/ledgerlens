@@ -303,7 +303,16 @@ def _build_tools(
 
 
 def _render_task(task: WorkerTask) -> str:
-    parts = [f"Sub-task: {task.goal}", f"Data mode: {task.context.mode}"]
+    from datetime import date
+
+    # Ground relative-time phrasing ("last month", "over the past year") to a
+    # concrete reference date — the model has no reliable current date and the
+    # price provider only serves recent history (T-033).
+    parts = [
+        f"Today's date is {date.today().isoformat()}.",
+        f"Sub-task: {task.goal}",
+        f"Data mode: {task.context.mode}",
+    ]
     if task.context.constraints:
         parts.append("Constraints: " + "; ".join(task.context.constraints))
     if task.context.prior_results:
