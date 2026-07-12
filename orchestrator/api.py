@@ -33,7 +33,12 @@ from orchestrator.agui import extract_question, stream_agui_run
 from orchestrator.demo_limits import DemoLimiter, DemoLimitError, build_demo_limiter
 from orchestrator.graph import Orchestrator
 from orchestrator.monitor_api import monitor_router
-from orchestrator.persistence import create_run, finalize_run, make_db_subscriber
+from orchestrator.persistence import (
+    create_run,
+    finalize_run,
+    make_db_subscriber,
+    record_demo_rejection,
+)
 from orchestrator.worker_client import (
     A2AWorkerClient,
     LocalWorkerClient,
@@ -168,7 +173,15 @@ def get_demo_limiter() -> DemoLimiter:
 
 @app.exception_handler(DemoLimitError)
 async def _demo_limit_handler(_: Request, exc: DemoLimitError) -> JSONResponse:
-    """Render a rejected demo request as a polite, human-readable refusal."""
+    """Render a rejected demo request as a polite, human-readable refusal and
+    record it for the operations dashboard (T-036 §1). The counter is best
+    effort: a bookkeeping failure must never change what the caller sees."""
+    try:
+        await record_demo_rejection(exc.kind, exc.status_code)
+    except Exception as bookkeeping_error:  # pragma: no cover - defensive
+        get_logger(node="orchestrator").warning(
+            "demo_rejection_record_failed", kind=exc.kind, error=str(bookkeeping_error)
+        )
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 

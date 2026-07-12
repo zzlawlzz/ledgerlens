@@ -59,6 +59,22 @@ async def create_run(question: str, mode: str) -> uuid.UUID:
     return run_id
 
 
+async def record_demo_rejection(kind: str, status_code: int) -> None:
+    """Persist one public-demo admission rejection for observability (T-036 §1).
+
+    Stores only the limit ``kind`` and HTTP status — never the IP or question.
+    Callers treat a failure here as non-fatal: the refusal response to the user
+    matters more than its bookkeeping.
+    """
+    factory = get_session_factory()
+    async with factory() as session:
+        await session.execute(
+            text("INSERT INTO demo_rejections (kind, status_code) VALUES (:kind, :status_code)"),
+            {"kind": kind, "status_code": status_code},
+        )
+        await session.commit()
+
+
 async def insert_step(run_id: uuid.UUID, *, node: str, goal: str) -> uuid.UUID:
     """One executed plan step = one steps row (T-020)."""
     step_id = uuid.uuid4()

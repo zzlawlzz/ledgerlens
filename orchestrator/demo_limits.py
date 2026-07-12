@@ -37,12 +37,14 @@ _HOUR_S = 3600.0
 
 class DemoLimitError(Exception):
     """A demo limit was hit. ``status_code``/``detail`` map to a polite HTTP
-    refusal (see the exception handler in ``orchestrator.api``)."""
+    refusal (see the exception handler in ``orchestrator.api``). ``kind`` is a
+    stable machine label used for the observability counter (T-036 §1)."""
 
-    def __init__(self, status_code: int, detail: str) -> None:
+    def __init__(self, status_code: int, detail: str, kind: str) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
+        self.kind = kind
 
 
 def hash_ip(ip: str) -> str:
@@ -97,6 +99,7 @@ class DemoLimiter:
                 413,
                 f"Question too long for the public demo ({len(question)} chars, "
                 f"limit {limit}). Please shorten it.",
+                kind="question_too_long",
             )
 
     def check_rate(self, ip: str) -> None:
@@ -117,6 +120,7 @@ class DemoLimiter:
                 429,
                 f"Rate limit reached for the public demo ({limit} runs/hour). "
                 f"Please try again in about {max(retry_after // 60, 1)} min.",
+                kind="rate_limited",
             )
         window.append(now)
 
@@ -132,6 +136,7 @@ class DemoLimiter:
                 503,
                 "The public demo has reached its daily budget. It resets at "
                 "00:00 UTC — please come back then. Thanks for trying it!",
+                kind="daily_cost_cap",
             )
 
     def acquire_slot(self) -> None:
@@ -146,6 +151,7 @@ class DemoLimiter:
                 429,
                 "The public demo is busy handling other requests right now. "
                 "Please try again in a few seconds.",
+                kind="concurrency_limit",
             )
         self._active += 1
 

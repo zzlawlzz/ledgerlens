@@ -6,7 +6,7 @@
   "tags": ["ledgerlens", "operations"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "editable": true,
   "graphTooltip": 1,
@@ -615,6 +615,44 @@
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT provider, model, left(error, 120) AS error, count(*) AS errors, max(created_at) AS last_seen FROM llm_calls WHERE $__timeFilter(created_at) AND error IS NOT NULL GROUP BY 1, 2, 3 ORDER BY 4 DESC LIMIT 50"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Demo rejections (range)",
+      "description": "Public-demo admission refusals in range (T-036 §1). 0 in dev — the limiter is a no-op off BUDGET_PROFILE=demo.",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 48},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "colorMode": "value", "graphMode": "area", "textMode": "auto"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS rejections FROM demo_rejections WHERE $__timeFilter(created_at)"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Demo rejections by kind",
+      "description": "Public-demo refusals over time by limit kind (T-036 §1): question_too_long | rate_limited | concurrency_limit | daily_cost_cap.",
+      "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+      "gridPos": {"h": 8, "w": 18, "x": 6, "y": 48},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal", "group": "A"}, "showPoints": "never"}, "color": {"mode": "palette-classic"}}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "none"}},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "ledgerlens-postgres"},
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(created_at, $__interval) AS time, kind AS metric, count(*) AS value FROM demo_rejections WHERE $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1"
         }
       ]
     }

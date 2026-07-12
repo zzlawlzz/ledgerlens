@@ -208,3 +208,38 @@ def test_build_limiter_reads_demo_profile() -> None:
     assert limiter.max_question_chars == 500
     assert limiter.max_concurrent_runs == 2
     assert limiter.daily_cost_cap_usd == 1.5
+
+
+# --- rejection kinds (feed the T-036 §1 observability counter) --------------
+
+
+def test_each_limit_raises_a_labelled_kind() -> None:
+    """Every rejection carries a stable machine ``kind`` so the operations
+    dashboard can split refusals by cause (question/rate/concurrency/cost)."""
+    clock = _FakeClock()
+    limiter = DemoLimiter(
+        runs_per_hour_per_ip=1,
+        max_question_chars=5,
+        max_concurrent_runs=1,
+        daily_cost_cap_usd=1.0,
+        clock=clock,
+    )
+
+    with pytest.raises(DemoLimitError) as too_long:
+        limiter.check_question("way too long")
+    assert (too_long.value.kind, too_long.value.status_code) == ("question_too_long", 413)
+
+    limiter.check_rate("203.0.113.7")
+    with pytest.raises(DemoLimitError) as rate:
+        limiter.check_rate("203.0.113.7")
+    assert (rate.value.kind, rate.value.status_code) == ("rate_limited", 429)
+
+    limiter.acquire_slot()
+    with pytest.raises(DemoLimitError) as busy:
+        limiter.acquire_slot()
+    assert (busy.value.kind, busy.value.status_code) == ("concurrency_limit", 429)
+
+    limiter.record_cost(1.0)
+    with pytest.raises(DemoLimitError) as cost:
+        limiter.check_daily_cost()
+    assert (cost.value.kind, cost.value.status_code) == ("daily_cost_cap", 503)
