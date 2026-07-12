@@ -2,7 +2,10 @@ import type { Lang } from "../i18n";
 import { useI18n } from "../i18n";
 import type { RunView } from "../types";
 
-export function Header({ run, mode }: { run: RunView; mode?: string }) {
+// Canonical public repository — the demo banner links back to it (T-036 §5).
+const REPO_URL = "https://github.com/zzlawlzz/ledgerlens";
+
+export function Header({ run, mode, demo }: { run: RunView; mode?: string; demo?: boolean }) {
   const { lang, setLang, t } = useI18n();
   const cost = run.summary?.usage.cost_usd;
   return (
@@ -35,6 +38,14 @@ export function Header({ run, mode }: { run: RunView; mode?: string }) {
       {mode === "ru" && (
         <div className="disclaimer iss-attribution" data-testid="iss-attribution">
           {t("iss_attribution")}
+        </div>
+      )}
+      {demo && (
+        <div className="disclaimer demo-banner" data-testid="demo-banner">
+          {t("demo_banner")}{" "}
+          <a href={REPO_URL} target="_blank" rel="noreferrer">
+            {t("demo_repo_link")}
+          </a>
         </div>
       )}
     </header>

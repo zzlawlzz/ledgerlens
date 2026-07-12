@@ -396,7 +396,9 @@ async def examples() -> JSONResponse:
     app_config = load_yaml_config("app")
     mode = get_settings().app_mode
     key = "examples_ru" if mode == "ru" else "examples"
-    return JSONResponse({"examples": app_config.get(key, []), "mode": mode})
+    # `demo` lets the UI show the public-demo banner (T-036 §5) only when this
+    # instance runs under BUDGET_PROFILE=demo; off the demo profile it stays hidden.
+    return JSONResponse({"examples": app_config.get(key, []), "mode": mode, "demo": _DEMO})
 
 
 @app.get("/healthz")

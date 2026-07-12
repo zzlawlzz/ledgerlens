@@ -11,6 +11,8 @@ const DICT = {
     disclaimer: "This is financial analytics, not investment advice.",
     iss_attribution:
       "MOEX ISS data is shown for informational/demo purposes only (delayed Moscow Exchange data).",
+    demo_banner: "Public demo — EDGAR filing data, limited budget.",
+    demo_repo_link: "Source on GitHub",
     ask_placeholder: "Ask about the loaded companies…",
     ask_button: "Ask",
     examples_title: "Try one of these:",
@@ -45,6 +47,8 @@ const DICT = {
     disclaimer: "Это финансовая аналитика, а не инвестиционная рекомендация.",
     iss_attribution:
       "Данные MOEX ISS приведены в ознакомительных/демонстрационных целях (задержанные данные Московской биржи).",
+    demo_banner: "Публичное демо — данные EDGAR, бюджет ограничен.",
+    demo_repo_link: "Исходный код на GitHub",
     ask_placeholder: "Спросите о загруженных компаниях…",
     ask_button: "Спросить",
     examples_title: "Попробуйте один из примеров:",
