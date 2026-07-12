@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LedgerLens — Multi-Agent Financial Analysis</title>
+  <meta name="description" content="A self-hostable multi-agent platform that analyzes SEC/MOEX filings like an analyst: it plans, self-corrects, and cites every claim to the primary source." />
+
+  <!-- Open Graph / social preview -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="LedgerLens — Multi-Agent Financial Analysis" />
+  <meta property="og:description" content="Ask in plain language → the system plans, self-corrects, and cites every claim to the SEC/MOEX primary source. Self-hostable, two-node, eval-gated." />
+  <meta property="og:url" content="https://zzlawlzz.github.io/ledgerlens/" />
+  <meta property="og:image" content="https://zzlawlzz.github.io/ledgerlens/assets/grafana_operations.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="LedgerLens — Multi-Agent Financial Analysis" />
+  <meta name="twitter:description" content="Plans, self-corrects, cites every claim to the primary source. Self-hostable & eval-gated." />
+  <meta name="twitter:image" content="https://zzlawlzz.github.io/ledgerlens/assets/grafana_operations.png" />
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top">
+      <span class="brand-mark">◈</span> LedgerLens
+    </a>
+    <nav class="topnav">
+      <a href="#how" data-i18n="nav_how">How it works</a>
+      <a href="#architecture" data-i18n="nav_arch">Architecture</a>
+      <a href="#depth" data-i18n="nav_depth">Depth</a>
+      <a href="#benchmarks" data-i18n="nav_bench">Benchmarks</a>
+    </nav>
+    <div class="lang-toggle" role="group" aria-label="Language">
+      <button type="button" data-lang="en" class="active">EN</button>
+      <button type="button" data-lang="ru">RU</button>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <p class="eyebrow" data-i18n="hero_eyebrow">Self-hostable · multi-agent · eval-gated</p>
+      <h1 data-i18n="hero_title">Financial filings, analyzed like an analyst — not searched like a box.</h1>
+      <p class="lede" data-i18n="hero_lede">
+        Ask in plain language. LedgerLens builds an explicit multi-step plan, its
+        agents work over structured facts (SQL) and narrative disclosures (RAG),
+        it self-corrects when a step comes back empty — and every claim carries a
+        citation to the exact SEC / MOEX source.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://app.ledgerlens.space" target="_blank" rel="noopener" data-i18n="cta_demo">Try the live demo</a>
+        <a class="btn" href="https://github.com/zzlawlzz/ledgerlens" target="_blank" rel="noopener" data-i18n="cta_github">View on GitHub</a>
+        <a class="btn btn-ghost" href="mailto:zzlawlzz5@gmail.com" data-i18n="cta_contact">Contact</a>
+      </div>
+      <p class="demo-note" data-i18n="hero_demo_note">
+        The demo is public, rate- and budget-limited, and served from a
+        self-hosted node behind a Cloudflare Tunnel — it may be offline during
+        maintenance.
+      </p>
+    </section>
+
+    <!-- ============ HOW / DEMO ============ -->
+    <section id="how" class="section">
+      <h2 data-i18n="how_title">Watch it self-correct</h2>
+      <p class="section-lede" data-i18n="how_lede">
+        The signature scenario: a step returns nothing, the orchestrator re-plans
+        it in view, and the retry produces a cited answer. Reasoning streams
+        first (AG-UI), so you see the analyst think.
+      </p>
+      <figure class="demo-figure">
+        <div class="shot-pair">
+          <img src="assets/self_correction_replan.png" alt="Orchestrator re-plans an empty step" loading="lazy" />
+          <img src="assets/self_correction_worker.png" alt="Worker returns an answer with sec.gov citations" loading="lazy" />
+        </div>
+        <figcaption>
+          <span data-i18n="how_cap">Left: an empty step is re-planned live. Right: the retried worker answers with per-claim <code>sec.gov</code> citations.</span>
+          <span class="pending" data-i18n="how_pending">▶ A 60–90 s screen capture of this flow is in the pipeline.</span>
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ============ ARCHITECTURE ============ -->
+    <section id="architecture" class="section">
+      <h2 data-i18n="arch_title">Architecture</h2>
+      <p class="section-lede" data-i18n="arch_lede">
+        A Plan-and-Execute orchestrator delegates to ReAct workers over A2A —
+        one local, one on a remote node across an AmneziaWG mesh. Tools are MCP
+        servers; the browser is fed by an AG-UI event stream. Hover a layer.
+      </p>
+      <div class="arch-wrap">
+        <svg viewBox="0 0 760 470" class="arch-svg" role="img" aria-label="LedgerLens layered architecture">
+          <!-- UI layer -->
+          <g class="arch-node" data-tip="tip_ui">
+            <rect x="270" y="18" width="220" height="52" rx="10" />
+            <text x="380" y="40" class="n-title">Web UI · React / TS</text>
+            <text x="380" y="58" class="n-sub">AG-UI event stream</text>
+          </g>
+          <!-- Orchestrator -->
+          <g class="arch-node accent" data-tip="tip_orch">
+            <rect x="255" y="110" width="250" height="56" rx="10" />
+            <text x="380" y="134" class="n-title">Orchestrator</text>
+            <text x="380" y="152" class="n-sub">LangGraph · Plan-and-Execute</text>
+          </g>
+          <!-- Workers -->
+          <g class="arch-node" data-tip="tip_w1">
+            <rect x="70" y="210" width="200" height="56" rx="10" />
+            <text x="170" y="234" class="n-title">Worker (ReAct)</text>
+            <text x="170" y="252" class="n-sub">local node</text>
+          </g>
+          <g class="arch-node" data-tip="tip_w2">
+            <rect x="490" y="210" width="200" height="56" rx="10" />
+            <text x="590" y="230" class="n-title">Worker (ReAct)</text>
+            <text x="590" y="248" class="n-sub">remote · A2A over</text>
+            <text x="590" y="262" class="n-sub">AmneziaWG</text>
+          </g>
+          <!-- Router -->
+          <g class="arch-node" data-tip="tip_router">
+            <rect x="300" y="210" width="160" height="56" rx="10" />
+            <text x="380" y="234" class="n-title">Model Router</text>
+            <text x="380" y="252" class="n-sub">local CPU ⇄ cloud</text>
+          </g>
+          <!-- Tools (MCP) -->
+          <g class="arch-node tool" data-tip="tip_tools">
+            <rect x="90" y="320" width="150" height="48" rx="10" />
+            <text x="165" y="341" class="n-title">sql_query</text>
+            <text x="165" y="358" class="n-sub">schema_introspect · MCP</text>
+          </g>
+          <g class="arch-node tool" data-tip="tip_tools">
+            <rect x="305" y="320" width="150" height="48" rx="10" />
+            <text x="380" y="341" class="n-title">rag_search</text>
+            <text x="380" y="358" class="n-sub">hybrid + rerank · MCP</text>
+          </g>
+          <g class="arch-node tool" data-tip="tip_tools">
+            <rect x="520" y="320" width="150" height="48" rx="10" />
+            <text x="595" y="341" class="n-title">price_enrich</text>
+            <text x="595" y="358" class="n-sub">MCP</text>
+          </g>
+          <!-- Data -->
+          <g class="arch-node data" data-tip="tip_pg">
+            <rect x="150" y="410" width="180" height="46" rx="10" />
+            <text x="240" y="431" class="n-title">Postgres</text>
+            <text x="240" y="448" class="n-sub">facts + pgvector</text>
+          </g>
+          <g class="arch-node data" data-tip="tip_qd">
+            <rect x="430" y="410" width="180" height="46" rx="10" />
+            <text x="520" y="431" class="n-title">Qdrant</text>
+            <text x="520" y="448" class="n-sub">narrative vectors</text>
+          </g>
+          <!-- edges -->
+          <g class="arch-edges">
+            <line x1="380" y1="70" x2="380" y2="110" />
+            <line x1="300" y1="138" x2="170" y2="210" />
+            <line x1="460" y1="138" x2="590" y2="210" />
+            <line x1="170" y1="266" x2="165" y2="320" />
+            <line x1="380" y1="266" x2="380" y2="320" />
+            <line x1="590" y1="266" x2="595" y2="320" />
+            <line x1="165" y1="368" x2="240" y2="410" />
+            <line x1="380" y1="368" x2="520" y2="410" />
+          </g>
+        </svg>
+        <p class="arch-tip" id="archTip" data-i18n="tip_default">Hover a component for detail.</p>
+      </div>
+    </section>
+
+    <!-- ============ DEPTH MARKERS ============ -->
+    <section id="depth" class="section">
+      <h2 data-i18n="depth_title">Depth markers</h2>
+      <p class="section-lede" data-i18n="depth_lede">
+        The parts that make this a system, not a demo — each with a proof you can
+        open.
+      </p>
+      <div class="cards">
+        <article class="card">
+          <h3 data-i18n="depth_eval_t">Eval-in-CI</h3>
+          <p data-i18n="depth_eval_d">A 41-case golden set gated in GitHub Actions with quality thresholds (faithfulness, citation coverage, guardrail, numeric accuracy).</p>
+          <a class="proof" href="https://github.com/zzlawlzz/ledgerlens/actions/workflows/eval.yml" target="_blank" rel="noopener" data-i18n="depth_eval_p">eval.yml runs →</a>
+        </article>
+        <article class="card">
+          <h3 data-i18n="depth_a2a_t">Two-node A2A</h3>
+          <p data-i18n="depth_a2a_d">Workers speak the same A2A contract whether local or on a remote VPS reached over an AmneziaWG mesh — round-robin with local-preferred failover.</p>
+          <span class="proof muted" data-i18n="depth_a2a_p">gate G3 · deploy/worker-node/</span>
+        </article>
+        <article class="card">
+          <h3 data-i18n="depth_mcp_t">MCP tools</h3>
+          <p data-i18n="depth_mcp_d">sql_query, rag_search and price_enrich run as MCP servers — swappable, contract-tested, callable by any agent.</p>
+          <span class="proof muted" data-i18n="depth_mcp_p">T-027 · MCP servers + clients</span>
+        </article>
+        <article class="card">
+          <h3 data-i18n="depth_route_t">Tiered LLM routing</h3>
+          <p data-i18n="depth_route_d">Cheap/local CPU for classify/extract/guard, cloud API for plan/synthesize — provider-agnostic behind one interface, with cost tracking.</p>
+          <a class="proof" href="https://github.com/zzlawlzz/ledgerlens/blob/main/benchmarks/inference/REPORT.md" target="_blank" rel="noopener" data-i18n="depth_route_p">inference benchmark →</a>
+        </article>
+        <article class="card">
+          <h3 data-i18n="depth_guard_t">Groundedness guardrail</h3>
+          <p data-i18n="depth_guard_d">A non-advice guardrail blocks recommendation-shaped output, and a groundedness pass strips synthesis that isn't backed by retrieved context.</p>
+          <span class="proof muted" data-i18n="depth_guard_p">T-022 · T-041</span>
+        </article>
+        <article class="card">
+          <h3 data-i18n="depth_obs_t">Observability</h3>
+          <p data-i18n="depth_obs_d">Every run's steps, tokens, cost, latency and local-vs-cloud split land in Postgres and surface in Grafana (read-only role).</p>
+          <a class="proof" href="assets/grafana_quality.png" target="_blank" rel="noopener" data-i18n="depth_obs_p">Grafana quality board →</a>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ BENCHMARKS ============ -->
+    <section id="benchmarks" class="section">
+      <h2 data-i18n="bench_title">Benchmarks, measured</h2>
+      <p class="section-lede" data-i18n="bench_lede">
+        Routing and storage choices are backed by live numbers, not vibes.
+      </p>
+      <div class="bench-grid">
+        <div class="bench-card">
+          <h3 data-i18n="bench_inf_t">Inference — routing rationale</h3>
+          <table>
+            <thead>
+              <tr><th data-i18n="bench_col_model">Model</th><th>TTFT p50</th><th data-i18n="bench_col_cost">Cost /1k</th><th data-i18n="bench_col_quality">Judge</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>deepseek-v4-flash</td><td>0.74 s</td><td>$0.02</td><td>4.80</td></tr>
+              <tr><td>deepseek-v4-pro <span class="tag">thinking</span></td><td>2.75 s</td><td>$0.23</td><td>5.00</td></tr>
+            </tbody>
+          </table>
+          <p class="bench-take" data-i18n="bench_inf_take">Flash is ~10× cheaper and ~4× faster to first token — so it handles routing/extraction/guarding; the pro tier is reserved for planning and synthesis.</p>
+          <a class="proof" href="https://github.com/zzlawlzz/ledgerlens/blob/main/benchmarks/inference/REPORT.md" target="_blank" rel="noopener">REPORT.md →</a>
+        </div>
+        <div class="bench-card">
+          <h3 data-i18n="bench_vec_t">Vector store — pgvector vs Qdrant</h3>
+          <table>
+            <thead>
+              <tr><th data-i18n="bench_col_store">Store</th><th>Recall@10</th><th data-i18n="bench_col_lat">Latency p50</th><th>p95</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>pgvector (HNSW)</td><td>1.000</td><td>43.8 ms</td><td>47.9 ms</td></tr>
+              <tr><td>Qdrant (HNSW)</td><td>1.000</td><td>4.15 ms</td><td>16.9 ms</td></tr>
+            </tbody>
+          </table>
+          <p class="bench-take" data-i18n="bench_vec_take">Equal recall; Qdrant is markedly faster at query time and adds native hybrid (dense + BM25) — which is why narrative retrieval lives there while facts stay in Postgres.</p>
+          <a class="proof" href="https://github.com/zzlawlzz/ledgerlens/blob/main/benchmarks/vector/REPORT.md" target="_blank" rel="noopener">REPORT.md →</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CLOSING CTA ============ -->
+    <section class="section closing">
+      <h2 data-i18n="close_title">Run it yourself</h2>
+      <p class="section-lede" data-i18n="close_lede">Clone, set a few env vars, and <code>make demo</code> brings up the full stack with data in minutes — no EDGAR round-trip needed.</p>
+      <div class="cta-row center">
+        <a class="btn btn-primary" href="https://app.ledgerlens.space" target="_blank" rel="noopener" data-i18n="cta_demo">Try the live demo</a>
+        <a class="btn" href="https://github.com/zzlawlzz/ledgerlens" target="_blank" rel="noopener" data-i18n="cta_github">View on GitHub</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p class="disclaimer" data-i18n="footer_disclaimer">
+      LedgerLens analyses <strong>public</strong> filings and market data. It is
+      <strong>not</strong> an investment adviser and gives no buy/sell/hold
+      recommendations, price targets or personalised advice. Verify figures
+      against the cited primary source before relying on them.
+    </p>
+    <p class="licensing" data-i18n="footer_licensing">
+      Data: SEC EDGAR (fair-use, with User-Agent &amp; rate limits) · MOEX ISS
+      (informational / demonstration use only). See the repository for full
+      licensing.
+    </p>
+    <p class="colophon">
+      <a href="https://github.com/zzlawlzz/ledgerlens" target="_blank" rel="noopener">GitHub</a> ·
+      <a href="https://app.ledgerlens.space" target="_blank" rel="noopener" data-i18n="footer_demo">Live demo</a> ·
+      <a href="mailto:zzlawlzz5@gmail.com" data-i18n="cta_contact">Contact</a>
+    </p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
