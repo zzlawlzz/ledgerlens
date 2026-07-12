@@ -48,7 +48,7 @@ _Формат: `[роль] задача — каталоги — время на
 - `[регулярная] диагностика/пуш eval-блокера + T-036 §2 — ЗАВЕРШЕНО (06:20). Зона СВОБОДНА.` Всё запушено (main=`023dcd8`, origin синхронен). Ничего не оставлено незакоммиченным.
 - `[регулярная] T-041 root-cause фикс воркера — ЗАВЕРШЕНО кодом+тестами, закоммичено+запушено (main=c200427). Зона СВОБОДНА.` НЕ трогала prompts/worker_react.md (хотспот) — только `workers/react_worker.py` (цикл) + `tests/unit/test_worker.py`. Фикс: кандидат финального ответа = AIMessage БЕЗ tool_calls. Валидация — GH ci-eval `29180927853` (см. ниже).
 - `[регулярная] T-036 §1 (demo-лимиты) — ЗАВЕРШЕНО кодом+тестами, закоммичено+запушено (main=52d01c5). Зона СВОБОДНА.` `orchestrator/demo_limits.py` (новый) + wiring в `orchestrator/api.py` + 2 ключа в `config/budgets.yaml`. Не трогала graph.py/worker_client.py/prompts/eval. 16 юнит-тестов, 310 non-slow зелёных.
-- `[регулярная] T-036 §3 (security-pass чек-лист + demo-overlay) — deploy/demo/, web/nginx.conf, orchestrator/api.py (1-строчный demo-гейт docs) — начато 2026-07-12 ~13:40 — В РАБОТЕ.` Не трогаю graph.py/worker_client.py/prompts/config/app.yaml/docker-compose.yml (base). api.py правлю ТОЛЬКО минимально (docs_url demo-гейт) + коммичу сразу. Q-22 уже решён владельцем (=A, self-hosted EPYC, `51b2f40`) — T-041 не трогаю (зона оркестратора).
+- `[регулярная] T-036 §3 (security-pass чек-лист + demo-overlay) — ЗАВЕРШЕНО кодом+доками+тестами, закоммичено+запушено (main=d0526a2). Зона СВОБОДНА.` Тронула: `orchestrator/api.py` (docs demo-гейт, `61fa55e` — сразу закоммичено), `web/nginx.conf` (security-заголовки, `ef28bbf`), новые `deploy/demo/SECURITY.md`+`docker-compose.demo.yml` (`f4cc540`), `tests/unit/test_api_demo_hardening.py`, `BACKLOG.md`²⁸. НЕ трогала graph.py/worker_client.py/prompts/config/*.yaml/docker-compose.yml(base). §3-крит закрыт (чек-лист приложен, 8/8 с живыми доказательствами); остаток крита «публичный URL+TLS» = §4 живой CF-туннель (ждёт домен, Q-05).
 - `[регулярная] T-041 citation-блокер: причинные фиксы применены + финальная конфигурация, потолок раннера ПОДТВЕРЖДЁН 3 прогонами. Зона СВОБОДНА (main=4a087b4).` Fix A concurrency 2→1 (`f442832`) — реальный выигрыш. Fix B profile-driven `deadline_s` (финал=180, `ee6a02b`) + `CASE_TIMEOUT_S` 720→1200. **3 прогона:** citation 0.333→0.667→0.667 (застрял), faith 0.76→0.985→0.90, guardrail 1.0→0.8→0.6 (нондетерминированные 720s-cap-хиты по РАЗНЫМ кейсам = голодание раннера, НЕ дедлайн). **Тюнинг дедлайна НЕ сходится.** Потолок бьёт И citation, И guardrail → **вариант (1) быстрее раннер теперь ОДНОЗНАЧНАЯ рекомендация** (чинит оба + гейт не трогать; self-hosted на домашней 2×EPYC — бесплатно). Финальная ревалидация (dl180+cap1200) — GH full `29188667946` IN PROGRESS (может ~2.5-3ч из-за cap1200). **НЕ закрывать T-041 до решения владельца (Q-22 финал); пороги НЕ трогать.**
 
 > ✅ **EVAL `29177728775` ЗАВЕРШЁН (success, 19м).** Метрики: numeric=1.0, citation=**1.0**, guardrail=1.0, nodata=1.0, faithfulness=**0.0**. citation 0.417→1.0 подтвердил шумность (Q-22). faithfulness=0.0 — НЕ шум судьи: оба narrative-кейса вернули ПЛЕЙСХОЛДЕР «I'll search X's 10-K» вместо синтеза (см. журнал 08:15). Это и есть корневая причина И citation-, И faithfulness-шума — устранена фиксом воркера.
@@ -398,5 +398,28 @@ trace-событие деградации `worker_unreachable`; если все 
 `0edd241`; judge v2 — `4846087`). Нашёл+исправил баг golden (dividends→ford,
 `d13a433`). Диагностировал: локальный eval флапает по сети — финальную
 валидацию T-041 перенёс на GH Actions. Создал этот файл координации.
+
+### 2026-07-12 ~14:10 · регулярная сессия — ✅ T-036 §3 (security-pass) done кодом+доками+тестами
+Старт: `git pull` + БД (eval_runs 7-12 без изменений) + COORDINATION. Оркестратор
+активен (коммиты 32-50 мин назад: Q-22=A → CI на self-hosted EPYC `51b2f40`; T-035
+egress-proxy; T-031 AmneziaWG) — его зоны (T-041/T-035/T-031) НЕ трогала. Рабочее
+дерево чистое → взяла непересекающийся §3 T-036. **Сделано (5 коммитов, main=d0526a2,
+запушено):** (1) `orchestrator/api.py` — при `BUDGET_PROFILE=demo` отключены
+`docs_url/redoc_url/openapi_url` (debug-поверхность off; в dev остаются), регресс-тест
+на оба профиля subprocess'ом (`61fa55e`). (2) `web/nginx.conf` — `server_tokens off` +
+CSP (same-origin, `connect-src 'self'` под SSE) + X-Frame-Options DENY + nosniff +
+Referrer/Permissions-Policy + `client_max_body_size 64k`; **проверено live** (временный
+nginx на compose-сети, та же собранная dist): заголовки эмитятся, SPA 200, CSP не ломает
+UI (только same-origin `/assets/*`), `nginx -t` ок (`ef28bbf`). (3) `deploy/demo/SECURITY.md` —
+исполненный чек-лист, все 8 пунктов §3 с командами+живыми результатами (non-root uid=999,
+history-скан чист, CORS deny-by-default, docs-off, app_ro SELECT-only, .env вне образов).
+(4) `deploy/demo/docker-compose.demo.yml` — оверлей BUDGET_PROFILE=demo + `no-new-privileges`
+на все сервисы (merge провалидирован `compose config`). (5) BACKLOG²⁸ + крит §3 → `[~]`.
+**Ключевой честный вывод для §4/владельца:** Compose КОНКАТЕНИРУЕТ `ports:` при merge →
+оверлей НЕ может «снять» опубликованный порт. Публичная граница демо = **Cloudflare Tunnel
+(ingress только web-хостнейм) + ufw deny-inbound** (рунбук-сниппет в SECURITY.md), а не
+unpublish в compose. **T-036 остаётся `[ ]`:** §4 (живой CF-туннель, ждёт домен Q-05),
+§5 (UI-баннер), + остаток §1 (Grafana-панель demo-отказов). 314 non-slow зелёных, ruff+mypy
+чисто. Не трогала хотспоты кроме api.py (закоммичен сразу) и BACKLOG. Зона свободна.
 
 ### (регулярная сессия — впиши сюда свою следующую сводку)
