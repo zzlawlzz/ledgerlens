@@ -123,6 +123,34 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # Monitoring layer B (T-035): n8n schedules the 8-K watch and calls the
+  # orchestrator's /api/monitor/* endpoints. Opt-in — starts only with
+  # `docker compose --profile monitoring up n8n`, so the core demo stack is
+  # untouched (and the image isn't pulled) unless monitoring is explicitly on.
+  n8n:
+    image: n8nio/n8n:latest
+    profiles: ["monitoring"]
+    environment:
+      # Persisted-credentials encryption; a stable key survives volume reuse.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_HIRING_BANNER_ENABLED: "false"
+      GENERIC_TIMEZONE: UTC
+      # The workflow reads these to reach the orchestrator on the compose net.
+      LEDGERLENS_API_URL: http://app:8000
+      MONITOR_TOKEN: ${MONITOR_TOKEN:-}
+      EDGAR_USER_AGENT: ${EDGAR_USER_AGENT:-}
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      # Workflow JSON is versioned in the repo; import it per monitoring/README.
+      - ./monitoring/workflows:/workflows:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
   # MCP tool servers (T-027): the worker loads tools over MCP; behaviour is
   # identical to lib mode, only the transport changes.
   mcp-sql:
@@ -260,3 +288,4 @@ volumes:
   ollama-models:
   qdrant-data:
   grafana-data:
+  n8n-data:
