@@ -8,33 +8,34 @@
 #        -f deploy/demo/docker-compose.demo.yml -f deploy/demo/compose.epyc.yml up -d`
 #     so its containers are `lldemo-*` while the eval's stay `ledgerlens-*`.
 #   * Host ports: this overlay REMAPS the demo's published ports to a private
-#     1xxxx range (compose merges lists, so `!reset` replaces the base port).
-#     They never collide with the eval's defaults (5432/6333/8000/3000). The
-#     public entry is the cloudflared tunnel -> web:80 on the internal network;
-#     the remapped host ports exist only for on-node seeding and health checks.
-#     Services with no host-side need drop their ports entirely.
+#     1xxxx range with the `!override` merge tag (which REPLACES the base port
+#     list — `!reset` would only blank it and ignore the new value). They never
+#     collide with the eval's defaults (5432/6333/8000/3000). The public entry
+#     is the cloudflared tunnel -> web:80 on the internal network; the remapped
+#     host ports exist only for on-node seeding and health checks. Services with
+#     no host-side need drop their ports (`!override []`).
 #
-# Requires Docker Compose v2.24+ for the `!reset` tag (v5.x on the node).
+# Requires Docker Compose v2.24.4+ for the `!override` tag (v5.x on the node).
 services:
   postgres:
-    ports: !reset
+    ports: !override
       - "15432:5432"
   qdrant:
-    ports: !reset
+    ports: !override
       - "16333:6333"
   app:
-    ports: !reset
+    ports: !override
       - "18000:8000"
   web:
-    ports: !reset
+    ports: !override
       - "18080:80"
   grafana:
-    ports: !reset []
+    ports: !override []
   mcp-sql:
-    ports: !reset []
+    ports: !override []
   mcp-rag:
-    ports: !reset []
+    ports: !override []
   mcp-enrich:
-    ports: !reset []
+    ports: !override []
   worker:
-    ports: !reset []
+    ports: !override []
