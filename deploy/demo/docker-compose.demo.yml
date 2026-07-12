@@ -78,7 +78,10 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    # --protocol http2: the default QUIC transport (UDP/7844) is dropped on some
+    # restrictive/DPI networks (RU home uplink), so cloudflared can't reach the
+    # Cloudflare edge; HTTP/2 rides TCP/7844 which passes.
+    command: tunnel --no-autoupdate run --protocol http2 --token ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       web:
         condition: service_healthy
