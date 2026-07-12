@@ -459,7 +459,15 @@ async def run_worker_task(
                                 iterations += 1
                                 pending_tool_calls = bool(message.tool_calls)
                                 text = await _publish_ai_message(message, bus, usage)
-                                if text.strip():
+                                # Only a message with NO tool calls is a final
+                                # answer. A tool-calling message is a ReAct
+                                # action whose narration ("I'll search Apple's
+                                # 10-K ...") is a Thought — capturing it let a
+                                # pre-tool placeholder leak out as the answer
+                                # when the synthesis turn came back empty under
+                                # load, scoring faithfulness 0.0 on narrative
+                                # cases despite citations being retrieved (T-041).
+                                if text.strip() and not message.tool_calls:
                                     last_ai_text = text.strip()
                     if iterations >= task.budget.max_iterations and pending_tool_calls:
                         budget_hit = True

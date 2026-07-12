@@ -34,6 +34,19 @@ def _final_message(text: str) -> AIMessage:
     )
 
 
+def _thought_with_tool_call(text: str, name: str, args: dict[str, Any], call_id: str) -> AIMessage:
+    """A ReAct action message that also narrates intent ("I'll search ...").
+
+    DeepSeek reasoner emits reasoning text alongside the tool call it requests;
+    that text is a Thought, not the final answer.
+    """
+    return AIMessage(
+        content=text,
+        tool_calls=[{"name": name, "args": args, "id": call_id, "type": "tool_call"}],
+        usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+    )
+
+
 FAKE_TOOLS = {
     "sql_query": lambda **kwargs: _fake_sql(**kwargs),
     "schema_introspect": lambda **kwargs: _fake_schema(),
@@ -135,6 +148,31 @@ async def test_model_failure_returns_failed_result() -> None:
     )
     assert result.status == "failed"
     assert "LLM API down" in result.answer
+
+
+async def test_tool_call_thought_never_leaks_as_answer() -> None:
+    """Root cause of GH ci-eval faithfulness=0.0 on narrative cases (T-041).
+
+    Under load the synthesis turn can come back empty; if the preceding
+    action message's narration ("I'll search Apple's 10-K ...") were captured
+    as the answer, the worker would report a placeholder as ``succeeded`` —
+    citations retrieved, but the answer text contradicting them (faithfulness
+    0.0). A tool-calling message is a ReAct action, never a final answer.
+    """
+    model = _script(
+        [
+            _thought_with_tool_call(
+                "I'll search Apple's 10-K for supply chain risks",
+                "sql_query",
+                {"sql": "SELECT value FROM latest_facts"},
+                "c1",
+            ),
+            _final_message(""),  # synthesis turn returns empty (rate-limited)
+        ]
+    )
+    result = await run_worker_task(_task(), model=model, tool_impls=dict(FAKE_TOOLS))
+    assert "I'll search" not in result.answer
+    assert result.status == "failed"
 
 
 def test_worker_result_serializes_per_contract() -> None:
