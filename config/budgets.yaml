@@ -6,12 +6,15 @@ profiles:
     max_replans: 2
     worker_max_iterations: 8
     # Per-worker-step wall deadline. 90 was the hardcoded WorkerBudget default;
-    # raised to 180 for dev/eval because a narrative_rag step (fastembed embed +
-    # hybrid search + jina cross-encoder rerank + synthesis) is CPU-bound and on
-    # a slow/contended runner (GitHub 2-vCPU eval) the reranker did not finish
-    # under 90s, so the step timed out before returning citations (T-041/Q-22).
-    # Bounded well under wall_clock_s_per_run below.
-    worker_deadline_s: 180
+    # a narrative_rag step (fastembed embed + hybrid search + jina cross-encoder
+    # rerank + synthesis) is CPU-bound and on a slow eval runner (GitHub 2-vCPU)
+    # did not finish under 90s, timing out before citations (T-041/Q-22). 120
+    # gives ~33% more headroom than the old hardcap — enough for most narrative
+    # synthesis to complete — while staying bounded: at 180 a multi-step case
+    # (worker step + replan, each up to the deadline) ran past eval's 720s
+    # per-case hard cap (CASE_TIMEOUT_S), failing a guardrail case on a pure
+    # timeout artifact. 120 keeps worst-case case duration under that cap.
+    worker_deadline_s: 120
     max_cost_usd_per_run: 0.50
     max_tokens_per_run: 200000
     # 600 on the dev box: local-tier classify/extract on a laptop CPU eat
