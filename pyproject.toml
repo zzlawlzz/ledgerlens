@@ -46,6 +46,11 @@ dev = [
     "types-beautifulsoup4>=4.12.0.20250516",
     "types-pyyaml>=6.0.12.20260518",
 ]
+# Optional, only for benchmarks/ (T-037). Kept out of the default install so
+# the runtime image stays lean; run with `uv run --group bench …`.
+bench = [
+    "matplotlib>=3.9",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -75,7 +80,9 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-exclude = ['^\.venv/', '^data/', '^web/']
+# benchmarks/ are throwaway analysis scripts (not shipped in the wheel) and
+# pull untyped deps like matplotlib — linted by ruff, excluded from strict typing.
+exclude = ['^\.venv/', '^data/', '^web/', '^benchmarks/']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
