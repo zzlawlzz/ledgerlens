@@ -105,7 +105,17 @@ jobs:
           EVAL_PROFILE: ${{ github.event.inputs.profile || 'ci' }}
         run: |
           set +e
-          uv run python -m eval.run --profile "$EVAL_PROFILE" --base-url http://localhost:8000
+          # --concurrency 1 (T-041/Q-22): the GitHub runner has 2 vCPUs, and a
+          # narrative_rag case runs a CPU-heavy jina cross-encoder rerank inside
+          # mcp-rag. At the default concurrency 2, two rerank flows competed for
+          # those 2 cores, roughly halving each one's throughput — the rag flow
+          # then blew the worker deadline before returning citations (or before
+          # synthesis), so citation_coverage/faithfulness read low on a healthy
+          # corpus that scores full locally. Serializing the cases removes the
+          # contention (deterministic root cause) at the cost of ~2x wall time;
+          # the job has no timeout-minutes cap (GitHub's 6h default), so full
+          # (41 cases) still fits comfortably.
+          uv run python -m eval.run --profile "$EVAL_PROFILE" --base-url http://localhost:8000 --concurrency 1
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Locate this run's report
