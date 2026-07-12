@@ -39,7 +39,8 @@
 
 _Формат: `[роль] задача — каталоги — время начала — статус`_
 
-- _(пусто — обнови при старте работы)_
+- `[регулярная] T-035 (слой B n8n→Telegram) — monitoring/, db/versions, orchestrator/api.py (эндпоинты monitor/*), config/router.yaml, docker-compose.yml — старт 2026-07-12 04:05 — WIP`
+  - Оркестратор СЕЙЧАС активен в orchestrator/graph.py + worker_client.py (T-031 диспетчер, mtime 04:03) — НЕ трогаю их.
 
 ---
 
