@@ -39,7 +39,7 @@
 
 _Формат: `[роль] задача — каталоги — время начала — статус`_
 
-- `[регулярная] T-036 §5 (UI-баннер демо) — web/src/ (App.tsx, Header.tsx, i18n.ts, styles.css) + orchestrator/api.py (флаг demo в /api/examples) — старт ~14:25 — В РАБОТЕ.` Не трогаю graph.py/worker_client.py/prompts/config/*.yaml/docker-compose/eval.yml.
+- `[регулярная] T-036 §5 (UI-баннер демо) — ЗАВЕРШЕНО кодом+тестами+живой проверкой, закоммичено+запушено (main=acee537). Зона СВОБОДНА.` Тронула: `orchestrator/api.py` (флаг `demo` в `/api/examples`, закоммичено сразу), `web/src/{App,components/Header,i18n,styles.css}`, новый `web/e2e/demo-banner.spec.ts`, `BACKLOG.md`²⁹. НЕ трогала graph.py/worker_client.py/prompts/config/*.yaml/docker-compose/eval.yml.
 - ⚠️ **НАХОДКА для оркестратора/владельца (Q-22=A):** self-hosted EPYC eval `29189266539` УПАЛ (25м, exit 1) НЕ по метрикам, а по **правам ФС на раннере**: `Permission denied (os error 13)` при записи в `/home/zzlawlzz/.cache/huggingface/xet/...` → fastembed не смог скачать модель → `RuntimeError`. Раннер-процесс (`epyc-home`) не может писать в `~/.cache/huggingface` (вероятно каталог принадлежит root от прошлого ручного прогона). Также warning `actions/cache` restore auth fail (обычно безвредно). **Фикс — на стороне раннера/воркфлоу (домен оркестратора):** либо `chown -R` кэша под юзера сервиса на ноде, либо в eval.yml задать job-env `HF_HOME`/`HF_HUB_CACHE` в job-локальный (`${{ github.workspace }}/.hf`) писабельный путь. НЕ трогаю eval.yml (твой `51b2f40` 45м назад + твой домен Q-22).
 
 - `[регулярная] T-035 (слой B n8n→Telegram) — ЗАВЕРШЕНО кодом+тестами, закоммичено (fb88c03). Зона СВОБОДНА.` Остаток — только живые крит. на восстановленном стеке (см. журнал + Q-21). Не трогал graph.py/worker_client.py/benchmarks/.
@@ -424,5 +424,25 @@ history-скан чист, CORS deny-by-default, docs-off, app_ro SELECT-only, .
 unpublish в compose. **T-036 остаётся `[ ]`:** §4 (живой CF-туннель, ждёт домен Q-05),
 §5 (UI-баннер), + остаток §1 (Grafana-панель demo-отказов). 314 non-slow зелёных, ruff+mypy
 чисто. Не трогала хотспоты кроме api.py (закоммичен сразу) и BACKLOG. Зона свободна.
+
+### 2026-07-12 ~16:15 · регулярная сессия — ✅ T-036 §5 (UI demo-баннер) done + находка: self-hosted eval упал по правам ФС (не метрики)
+Старт: `git pull` + БД (eval_runs 7-12 без изменений) + COORDINATION (все зоны свободны).
+**Находка по критпути:** последний self-hosted EPYC eval `29189266539` (Q-22=A, твой `51b2f40`)
+УПАЛ за 25м НЕ по метрикам, а по **правам ФС раннера**: `Permission denied (os error 13)` при
+записи в `/home/zzlawlzz/.cache/huggingface/xet/...` → fastembed не скачал модель → `RuntimeError`.
+Раннер-юзер (`epyc-home`) не может писать в `~/.cache/huggingface` (вероятно root-owned от ручного
+прогона). Фикс — твой домен (chown кэша на ноде ИЛИ job-env `HF_HOME`/`HF_HUB_CACHE` в
+`${{ github.workspace }}/.hf` в eval.yml). eval.yml НЕ трогала (твой файл + Q-22-домен).
+**Взяла непересекающийся [ ]-кусок T-036 §5 (UI-баннер, продолжение моей T-036-ветки §1/§2/§3):**
+`/api/examples` отдаёт флаг `demo` (=`BUDGET_PROFILE=demo`, тот же `_DEMO`, что гейтит docs §3);
+баннер «Public demo — EDGAR data, limited budget / Source on GitHub» (i18n EN+RU симметрично,
+ссылка на репо, accent-стиль) в `Header`, рендерится ТОЛЬКО в demo, в dev/prod скрыт. **Проверено
+живьём в реальном браузере** (Playwright+Chromium против vite-dev с моком `/api/examples`,
+`web/e2e/demo-banner.spec.ts`, 2/2: demo=true→баннер+href+RU-ретрансляция; demo=false→скрыт;
+скриншот подтверждает). `tsc`+`vite build`+eslint+prettier чисто, 314 non-slow python зелёные,
+i18n-контракт зелёный. **Отклонение (честно, ²⁹):** live-флаг из `app`-контейнера не проверен —
+контейнер держит старый образ (`app=build:.`, нужен ребилд; тот же отложенный путь, что §1-Grafana);
+покрыто юнит-тестами + фронт-мок на оба значения. Коммит `acee537`, запушено. **T-036 остаётся `[ ]`:**
+единственный остаток — §4 (живой CF-туннель, ждёт домен Q-05) + мелочи (§1-Grafana-панель). Зона свободна.
 
 ### (регулярная сессия — впиши сюда свою следующую сводку)
