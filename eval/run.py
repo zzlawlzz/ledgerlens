@@ -67,6 +67,11 @@ REPORTS_DIR = Path(__file__).resolve().parent / "reports"
 NETWORK_RETRY_ATTEMPTS = 2
 JUDGE_PASS_BAR = 0.6
 CONTEXT_MAX_CHARS = 8000
+# Hard wall-clock cap per case: the server-side run budget is <=600s, so a
+# case that runs past this is stuck (a hung SSE stream never delivering a
+# terminal event was observed hanging a whole CI eval for 37 min). Bounding
+# it here keeps one bad case from stalling the entire run.
+CASE_TIMEOUT_S = 720.0
 
 
 def _tag(ticker: Any, form_type: Any, period: Any, section: Any) -> str:
@@ -656,7 +661,14 @@ async def run_eval(profile: str, base_url: str, concurrency: int = 2) -> int:
             async with semaphore:
                 started = time.perf_counter()
                 try:
-                    result = await _score_case(client, router, tracker, case)
+                    async with asyncio.timeout(CASE_TIMEOUT_S):
+                        result = await _score_case(client, router, tracker, case)
+                except TimeoutError:
+                    result = CaseResult(
+                        case=case,
+                        passed=False,
+                        details={"error": f"case exceeded {CASE_TIMEOUT_S:.0f}s hard timeout"},
+                    )
                 except Exception as exc:  # noqa: BLE001 — one case's crash must not
                     # discard every other case's already-computed score and the
                     # report along with it (a live infra blip did exactly that).
