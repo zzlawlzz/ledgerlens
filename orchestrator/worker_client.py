@@ -30,6 +30,12 @@ def assert_worker_url_secure(name: str, url: str) -> None:
     plain HTTP never crosses the public internet. Plain HTTP to a public
     host is rejected: the A2A payload (and the token) would travel in the
     clear.
+
+    A single-label hostname (no dots, e.g. the Docker Compose service name
+    ``worker`` in ``http://worker:8081``) is always allowed: it only resolves
+    on the internal Docker/LAN network and never routes over the public
+    internet, so the cleartext risk does not apply. Public hosts are FQDNs
+    and therefore contain a dot.
     """
     if url == "local":
         return
@@ -43,7 +49,9 @@ def assert_worker_url_secure(name: str, url: str) -> None:
         if ipaddress.ip_address(host).is_private:
             return
     except ValueError:
-        pass  # a public hostname over plain http — reject below
+        pass  # not an IP literal — fall through to the hostname checks
+    if host and "." not in host:
+        return  # single-label host (compose service / LAN name) — internal only
     raise ConfigError(
         f"worker {name!r} url {url!r} is not secure: a non-local A2A endpoint "
         "must use https or a private/WireGuard address (plain http to a public "

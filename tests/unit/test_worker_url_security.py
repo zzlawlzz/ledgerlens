@@ -18,6 +18,8 @@ from orchestrator.worker_client import assert_worker_url_secure
         "http://192.168.1.50:8081",
         "http://172.16.3.4:8081",
         "https://worker.example.com",  # public but TLS
+        "http://worker:8081",  # Docker Compose service name (internal network)
+        "http://worker-local:8081",  # single-label host, internal only
     ],
 )
 def test_secure_urls_pass(url: str) -> None:
