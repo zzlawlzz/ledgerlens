@@ -1,5 +1,5 @@
 # LedgerLens — task automation. TODO-stubs are implemented by their backlog tasks.
-.PHONY: up down lint test test-integration ingest demo-ingest demo seed snapshot eval smoke db-up db-migrate db-reset bench-vector
+.PHONY: up down lint test test-integration ingest demo-ingest demo seed snapshot eval smoke db-up db-migrate db-reset bench-vector bench-inference
 
 lint:  ## Static checks: format, lint, types
 	uv run ruff format --check .
@@ -72,6 +72,9 @@ reindex:  ## Rebuild the Qdrant index from stored sections (no source traffic)
 
 bench-vector:  ## Benchmark pgvector vs Qdrant on the real corpus (T-037); writes benchmarks/vector/REPORT.md
 	uv run --group bench python benchmarks/vector/bench.py $(BENCH_ARGS)
+
+bench-inference:  ## Benchmark local CPU vs cloud API inference (T-037); writes benchmarks/inference/REPORT.md
+	uv run --group bench python -m benchmarks.inference.bench $(BENCH_ARGS)
 
 smoke:  ## compose up + ingest when empty + smoke_test.py (gate G1)
 	docker compose up -d --wait
