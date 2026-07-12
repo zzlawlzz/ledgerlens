@@ -20,4 +20,10 @@ profiles:
     wall_clock_s_per_run: 180
     runs_per_hour_per_ip: 10
 
+# Layer B (n8n monitoring, T-035) — independent of the per-run profiles above.
+# Caps how many 8-K summaries the orchestrator will generate per day so a burst
+# of filings (or a stuck n8n loop) cannot run up LLM cost. In-process counter.
+layer_b:
+  max_summaries_per_day: 50
+
 # System-wide daily cost cap comes from env (DAILY_COST_CAP_USD, Q-07).

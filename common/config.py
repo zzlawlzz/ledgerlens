@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     grafana_admin_password: str = ""
     grafana_ro_password: str = ""
     n8n_encryption_key: str = ""
+    monitor_token: str = ""  # shared secret n8n <-> /api/monitor/* (T-035)
 
     def cloud_llm_providers(self) -> list[str]:
         """Names of cloud providers whose API key is present."""

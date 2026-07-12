@@ -31,6 +31,7 @@ from common.logging import bind_run_context, configure_logging, get_logger, rese
 from common.tracing import Subscriber, TraceBus, TraceEvent, make_log_subscriber
 from orchestrator.agui import extract_question, stream_agui_run
 from orchestrator.graph import Orchestrator
+from orchestrator.monitor_api import monitor_router
 from orchestrator.persistence import create_run, finalize_run, make_db_subscriber
 from orchestrator.worker_client import (
     A2AWorkerClient,
@@ -140,6 +141,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="LedgerLens API", lifespan=_lifespan)
+app.include_router(monitor_router)  # T-035 monitoring layer B (/api/monitor/*)
 
 
 class ChatRequest(BaseModel):
