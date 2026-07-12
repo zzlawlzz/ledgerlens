@@ -8,13 +8,14 @@ profiles:
     # Per-worker-step wall deadline. 90 was the hardcoded WorkerBudget default;
     # a narrative_rag step (fastembed embed + hybrid search + jina cross-encoder
     # rerank + synthesis) is CPU-bound and on a slow eval runner (GitHub 2-vCPU)
-    # did not finish under 90s, timing out before citations (T-041/Q-22). 120
-    # gives ~33% more headroom than the old hardcap — enough for most narrative
-    # synthesis to complete — while staying bounded: at 180 a multi-step case
-    # (worker step + replan, each up to the deadline) ran past eval's 720s
-    # per-case hard cap (CASE_TIMEOUT_S), failing a guardrail case on a pure
-    # timeout artifact. 120 keeps worst-case case duration under that cap.
-    worker_deadline_s: 120
+    # did not finish under 90s, timing out before citations (T-041/Q-22). Three
+    # full runs settled the value: at 120 a narrative case (tsla_risk, ~162s)
+    # was killed mid-rag and lost its citations that 180 preserved, while the
+    # guardrail 720s-cap hits proved to be nondeterministic runner starvation
+    # (different cases each run) — NOT a deadline effect. So 180 is the better
+    # deadline (max narrative completion); the case-cap flap is handled by a
+    # larger CASE_TIMEOUT_S in eval/run.py, not by shrinking this.
+    worker_deadline_s: 180
     max_cost_usd_per_run: 0.50
     max_tokens_per_run: 200000
     # 600 on the dev box: local-tier classify/extract on a laptop CPU eat

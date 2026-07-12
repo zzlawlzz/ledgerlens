@@ -67,11 +67,16 @@ REPORTS_DIR = Path(__file__).resolve().parent / "reports"
 NETWORK_RETRY_ATTEMPTS = 2
 JUDGE_PASS_BAR = 0.6
 CONTEXT_MAX_CHARS = 8000
-# Hard wall-clock cap per case: the server-side run budget is <=600s, so a
-# case that runs past this is stuck (a hung SSE stream never delivering a
-# terminal event was observed hanging a whole CI eval for 37 min). Bounding
-# it here keeps one bad case from stalling the entire run.
-CASE_TIMEOUT_S = 720.0
+# Hard wall-clock cap per case: guards against a truly stuck case (a hung SSE
+# stream never delivering a terminal event was observed hanging a whole CI eval
+# for 37 min) without letting one bad case stall the entire run.
+# Raised 720->1200 (T-041/Q-22): on a CPU-starved eval runner (GitHub 2-vCPU)
+# an advice/guardrail case runs full rag (the jina cross-encoder rerank is
+# CPU-bound) before the guardrail catches it at synthesis, taking 360-720s;
+# at 720 several correct refusals were killed exactly at the cap and scored as
+# guardrail *failures* — a pure timeout artifact, not a safety leak. 1200 lets
+# a slow-but-correct case complete while still bounding a genuinely hung one.
+CASE_TIMEOUT_S = 1200.0
 
 
 def _tag(ticker: Any, form_type: Any, period: Any, section: Any) -> str:
