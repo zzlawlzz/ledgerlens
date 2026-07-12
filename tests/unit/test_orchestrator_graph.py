@@ -9,6 +9,7 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from common.agents import WorkerResult, WorkerTask
+from common.errors import ToolError
 from orchestrator.graph import (
     Classification,
     ContradictionVerdict,
@@ -77,6 +78,26 @@ class FakeWorker(WorkerClient):
         self.calls.append(task)
         result = self.script.pop(0)
         return result.model_copy(update={"task_id": task.task_id})
+
+
+class LocalFakeWorker(FakeWorker):
+    """A scripted worker that identifies as the in-process node (T-031)."""
+
+    is_local = True
+
+
+class UnreachableWorker(WorkerClient):
+    """A remote worker that always fails transport — raises retryable ToolError."""
+
+    is_local = False
+    relays_trace = False
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def run(self, task: WorkerTask) -> WorkerResult:
+        self.calls += 1
+        raise ToolError("A2A worker is unreachable: node down")
 
 
 def _result(status: str, answer: str = "answer") -> WorkerResult:
@@ -215,6 +236,63 @@ def test_next_ready_respects_needs() -> None:
     ]
     ready = _next_ready(steps)
     assert ready is not None and ready.id == "s3"  # s2 waits for s3
+
+
+@pytest.mark.asyncio
+async def test_failover_to_local_when_remote_unreachable() -> None:
+    router = FakeRouter(classification=Classification(complexity="simple"))
+    remote = UnreachableWorker()
+    local = LocalFakeWorker([_result("succeeded", "local answered")])
+    orchestrator = Orchestrator(
+        worker_clients={"remote": remote, "local": local},
+        worker_skills={
+            "remote": ["financial_sql_analysis"],
+            "local": ["financial_sql_analysis"],
+        },
+        router=router,  # type: ignore[arg-type]
+        budget_profile=dict(BUDGET),
+        track_db_steps=False,
+    )
+    state = await orchestrator.run(question="q", mode="us", run_id="rf")
+    assert remote.calls == 1  # remote is the primary and was tried first
+    assert len(local.calls) == 1  # ToolError failed over to the local worker
+    assert not state["partial"]  # failover is transparent — the run still succeeds
+    assert state["answer"].startswith("SYNTH")
+
+
+@pytest.mark.asyncio
+async def test_all_workers_unreachable_fails_the_step_not_the_run() -> None:
+    router = FakeRouter(classification=Classification(complexity="simple"), plans=[_plan("retry")])
+    a, b = UnreachableWorker(), UnreachableWorker()
+    orchestrator = Orchestrator(
+        worker_clients={"a": a, "b": b},
+        worker_skills={"a": ["financial_sql_analysis"], "b": ["financial_sql_analysis"]},
+        router=router,  # type: ignore[arg-type]
+        budget_profile=dict(BUDGET),
+        track_db_steps=False,
+    )
+    state = await orchestrator.run(question="q", mode="us", run_id="ru")
+    assert a.calls >= 1 and b.calls >= 1  # both candidates were attempted before giving up
+    assert state["partial"] is True  # no reachable worker → partial synthesis, no crash
+
+
+@pytest.mark.asyncio
+async def test_round_robin_spreads_primary_across_workers() -> None:
+    router = FakeRouter(classification=Classification(complexity="simple"))
+    a = LocalFakeWorker([_result("succeeded", "a")] * 3)
+    b = LocalFakeWorker([_result("succeeded", "b")] * 3)
+    orchestrator = Orchestrator(
+        worker_clients={"a": a, "b": b},
+        worker_skills={"a": ["financial_sql_analysis"], "b": ["financial_sql_analysis"]},
+        router=router,  # type: ignore[arg-type]
+        budget_profile=dict(BUDGET),
+        track_db_steps=False,
+    )
+    for i in range(3):
+        await orchestrator.run(question=f"q{i}", mode="us", run_id=f"rr{i}")
+    # counter 0→a (primary), 1→b, 2→a again: work is spread, not pinned to one node
+    assert len(a.calls) == 2
+    assert len(b.calls) == 1
 
 
 def test_find_contradiction_over_two_percent() -> None:

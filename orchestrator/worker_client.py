@@ -57,6 +57,9 @@ class WorkerClient(ABC):
     # (remote workers — keeps the stream and llm_calls/tool_calls accounting
     # complete, T-023).
     relays_trace = True
+    # True for the in-process worker; the dispatcher prefers a local worker as
+    # the failover fallback when a remote node is unreachable (T-031).
+    is_local = False
 
     @abstractmethod
     async def run(self, task: WorkerTask) -> WorkerResult:
@@ -65,6 +68,8 @@ class WorkerClient(ABC):
 
 class LocalWorkerClient(WorkerClient):
     """In-process worker (phase 1); trace events go to the shared bus."""
+
+    is_local = True
 
     def __init__(self, trace_bus: TraceBus | None = None) -> None:
         self._trace_bus = trace_bus

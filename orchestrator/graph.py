@@ -29,9 +29,10 @@ from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
-from common.agents import DEFAULT_ALLOWED_TOOLS, TaskContext, WorkerBudget, WorkerTask
+from common.agents import DEFAULT_ALLOWED_TOOLS, TaskContext, WorkerBudget, WorkerResult, WorkerTask
 from common.config import load_yaml_config
 from common.db import get_session_factory
+from common.errors import ToolError
 from common.logging import get_logger
 from common.tracing import TraceBus
 from model_router.router import RouterClient
@@ -169,6 +170,7 @@ class Orchestrator:
         self._budget = budget_profile or _load_budget_profile()
         self._track_db_steps = track_db_steps
         self._usage_probe = usage_probe or (self._db_usage if track_db_steps else None)
+        self._dispatch_counter = 0  # round-robins the primary worker per skill (T-031)
         self._log = get_logger(node="orchestrator")
         self._graph = self._build().compile(checkpointer=checkpointer)
 
@@ -302,15 +304,47 @@ class Orchestrator:
             allowed_tools=SKILL_TOOLS.get(step.skill, list(DEFAULT_ALLOWED_TOOLS)),
             budget=WorkerBudget(max_iterations=int(self._budget["worker_max_iterations"])),
         )
-        client = self._client_for(step.skill)
-        try:
-            result = await client.run(task)
-        except Exception as exc:  # noqa: BLE001 — a worker crash is a failed step, not a dead run
-            self._log.error("worker_crashed", step=step.id, error=str(exc)[:300])
+        candidates = self._ordered_clients(step.skill)
+        result: WorkerResult | None = None
+        client: WorkerClient | None = None
+        transport_errors: list[str] = []
+        for cand_name, candidate in candidates:
+            try:
+                result = await candidate.run(task)
+                client = candidate
+                break
+            except ToolError as exc:
+                # Transport/unreachable (remote node down) — fail over to the
+                # next candidate (local-preferred, T-031). A worker that ran
+                # and merely failed the task returns a WorkerResult, not this.
+                transport_errors.append(f"{cand_name}: {exc}")
+                self._log.warning("worker_failover", worker=cand_name, error=str(exc)[:200])
+                await self._publish(
+                    "budget",
+                    {
+                        "degradation": "worker_unreachable",
+                        "worker": cand_name,
+                        "error": str(exc)[:200],
+                    },
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001 — a real crash is a failed step, not failover
+                self._log.error("worker_crashed", step=step.id, error=str(exc)[:300])
+                step.status = "failed"
+                step.result_summary = f"worker crashed: {exc}"[:RESULT_SUMMARY_CHARS]
+                if self._track_db_steps:
+                    await finish_step(step_db_id, status="failed", output={}, error=str(exc)[:500])
+                await self._publish("step_finished", {"status": "failed", "plan_step": step.id})
+                return {"plan": _dump_plan(steps), "results": results}
+
+        if result is None or client is None:
+            # Every candidate worker was unreachable.
+            reason = "; ".join(transport_errors)[:RESULT_SUMMARY_CHARS]
+            self._log.error("all_workers_unreachable", step=step.id, reason=reason)
             step.status = "failed"
-            step.result_summary = f"worker crashed: {exc}"[:RESULT_SUMMARY_CHARS]
+            step.result_summary = f"no worker reachable: {reason}"[:RESULT_SUMMARY_CHARS]
             if self._track_db_steps:
-                await finish_step(step_db_id, status="failed", output={}, error=str(exc)[:500])
+                await finish_step(step_db_id, status="failed", output={}, error=reason)
             await self._publish("step_finished", {"status": "failed", "plan_step": step.id})
             return {"plan": _dump_plan(steps), "results": results}
 
@@ -544,12 +578,27 @@ class Orchestrator:
 
     # -- helpers -------------------------------------------------------------
 
-    def _client_for(self, skill: str) -> WorkerClient:
-        for name, skills in self._skills.items():
-            if skill in skills and name in self._clients:
-                return self._clients[name]
-        # No skill match: fall back to any registered worker (single-node phase).
-        return next(iter(self._clients.values()))
+    def _ordered_clients(self, skill: str) -> list[tuple[str, WorkerClient]]:
+        """Dispatch order for a skill (T-031, Q-20): round-robin the primary
+        across workers that have the skill so multi-step questions spread over
+        nodes, then a local-preferred failover tail so an unreachable remote
+        never breaks a run.
+        """
+        matching = [
+            (name, self._clients[name])
+            for name, skills in self._skills.items()
+            if skill in skills and name in self._clients
+        ]
+        if not matching:  # no skill match: any worker (single-node phase)
+            matching = list(self._clients.items())
+        if len(matching) <= 1:
+            return matching
+        rotation = self._dispatch_counter % len(matching)
+        self._dispatch_counter += 1
+        rotated = matching[rotation:] + matching[:rotation]
+        primary, rest = rotated[:1], rotated[1:]
+        rest.sort(key=lambda item: 0 if item[1].is_local else 1)  # prefer local for failover
+        return primary + rest
 
     async def _extract_key_values(self, step: PlanStep, answer: str) -> dict[str, dict[str, Any]]:
         """Cheap structured extraction feeding the contradiction rule."""
