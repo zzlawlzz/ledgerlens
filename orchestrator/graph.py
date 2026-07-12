@@ -302,7 +302,13 @@ class Orchestrator:
             goal=step.goal,
             context=TaskContext(prior_results=prior, mode=state.get("mode", "us")),
             allowed_tools=SKILL_TOOLS.get(step.skill, list(DEFAULT_ALLOWED_TOOLS)),
-            budget=WorkerBudget(max_iterations=int(self._budget["worker_max_iterations"])),
+            budget=WorkerBudget(
+                max_iterations=int(self._budget["worker_max_iterations"]),
+                # Profile-driven step deadline (T-041/Q-22): CPU-bound narrative
+                # rag needs headroom on a slow eval runner. Falls back to the
+                # WorkerBudget default (90s) for budget dicts that omit the key.
+                deadline_s=float(self._budget.get("worker_deadline_s", WorkerBudget().deadline_s)),
+            ),
         )
         candidates = self._ordered_clients(step.skill)
         result: WorkerResult | None = None
