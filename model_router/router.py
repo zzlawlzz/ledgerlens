@@ -22,6 +22,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -34,8 +35,31 @@ from common.logging import current_context, get_logger
 from common.tracing import TraceBus
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-TIER_RETRY_ATTEMPTS = 2
+TIER_RETRY_ATTEMPTS = 4
 TIER_RETRY_BACKOFF_S = 0.5
+# A blackholed TCP connect (some networks silently drop SYNs to foreign API
+# hosts intermittently) otherwise stalls a call for the full read deadline. A
+# short connect timeout makes it fail fast so the retry above can try again,
+# while the read stays generous for slow (thinking) tiers. A connection that
+# does succeed is pooled and kept warm across a run so later calls skip the
+# connect entirely — the dominant cost when only a fraction of connects land.
+LLM_CONNECT_TIMEOUT_S = 8.0
+LLM_KEEPALIVE_EXPIRY_S = 120.0
+
+
+def _llm_http_timeout(read_s: float) -> httpx.Timeout:
+    return httpx.Timeout(connect=LLM_CONNECT_TIMEOUT_S, read=read_s, write=15.0, pool=5.0)
+
+
+def _llm_async_client() -> httpx.AsyncClient:
+    """Pooled async client that keeps a warm connection alive across a run.
+
+    ``trust_env`` stays on (httpx default) so ``HTTPS_PROXY`` still routes the
+    call through an egress proxy when one is configured.
+    """
+    return httpx.AsyncClient(
+        limits=httpx.Limits(max_keepalive_connections=10, keepalive_expiry=LLM_KEEPALIVE_EXPIRY_S)
+    )
 
 
 @dataclass
@@ -79,7 +103,8 @@ def _default_model_factory(tier_spec: dict[str, Any], settings: Settings) -> Bas
             model=str(tier_spec["model"]),
             api_key=settings.deepseek_api_key,  # type: ignore[arg-type]
             base_url=DEEPSEEK_BASE_URL,
-            timeout=timeout,
+            timeout=_llm_http_timeout(timeout),
+            http_async_client=_llm_async_client(),
             temperature=0.0,
             extra_body=extra_body,
         )
@@ -88,14 +113,16 @@ def _default_model_factory(tier_spec: dict[str, Any], settings: Settings) -> Bas
             model=str(tier_spec["model"]),
             api_key="ollama",  # type: ignore[arg-type]
             base_url=f"{settings.ollama_base_url.rstrip('/')}/v1",
-            timeout=timeout,
+            timeout=_llm_http_timeout(timeout),
+            http_async_client=_llm_async_client(),
             temperature=0.0,
         )
     if provider == "openai":
         return ChatOpenAI(
             model=str(tier_spec["model"]),
             api_key=settings.openai_api_key,  # type: ignore[arg-type]
-            timeout=timeout,
+            timeout=_llm_http_timeout(timeout),
+            http_async_client=_llm_async_client(),
             temperature=0.0,
         )
     raise ConfigError(

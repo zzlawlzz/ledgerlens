@@ -15,7 +15,7 @@ from common.config import Settings
 from common.errors import ConfigError, SourceUnavailableError, ToolError
 from common.logging import bind_run_context, reset_run_context
 from common.tracing import TraceBus, TraceEvent
-from model_router.router import RouterChatModel, RouterClient
+from model_router.router import TIER_RETRY_ATTEMPTS, RouterChatModel, RouterClient
 
 
 class _NoEnvFileSettings(Settings):
@@ -109,11 +109,11 @@ async def test_fallback_to_next_tier_and_both_calls_traced() -> None:
     assert response.text == "answer from cheap"
     assert response.fallback_used is True
     assert response.provider == "deepseek"
-    assert failing.calls == 2  # two in-tier retry attempts before falling back
+    assert failing.calls == TIER_RETRY_ATTEMPTS  # all in-tier retries before falling back
     llm_events = [e for e in events if e.event == "llm_call"]
     failed = [e for e in llm_events if "error" in e.payload]
     succeeded = [e for e in llm_events if "error" not in e.payload]
-    assert len(failed) == 2 and len(succeeded) == 1
+    assert len(failed) == TIER_RETRY_ATTEMPTS and len(succeeded) == 1
     assert succeeded[0].payload["fallback_used"] is True
     assert succeeded[0].payload["tokens_in"] == 11
 
