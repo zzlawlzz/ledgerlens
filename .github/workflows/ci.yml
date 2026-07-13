@@ -65,6 +65,11 @@ jobs:
       POSTGRES_PASSWORD: ci-password
     steps:
       - uses: actions/checkout@v4
+      # `docker compose config` resolves `env_file: .env` (5 services); recent
+      # compose treats a missing env_file as a hard error, so materialize it
+      # from the tracked example (same as the smoke job).
+      - name: Prepare env
+        run: cp .env.example .env
       - run: docker compose config --quiet
       - run: docker build -t ledgerlens-app .
 
