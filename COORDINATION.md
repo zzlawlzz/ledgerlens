@@ -168,6 +168,27 @@ free-tier: только compact (~100 дней), история за стары�
 
 ## Журнал (append-only, новые записи сверху)
 
+### 2026-07-13 ~20:00 · оркестратор — 🎉 T-031 ГЕЙТ G3 ЗАКРЫТ ЖИВЬЁМ (распределённость доказана)
+Владелец дал go на VPS. Развернул вторую ноду end-to-end, все критерии G3
+проверены живьём (`422d3bb`):
+1. **Живой шаг на VPS:** «Compare Apple vs NVIDIA FY2025 revenue» → step_2 отработал
+   на `worker_node=vps-fi`, воркер на VPS дотянулся до MCP EPYC через туннель, вернул
+   верный NVIDIA $130.497B.
+2. **Failover:** стоп VPS-воркера → тот же вопрос успешно локально + trace
+   `worker_failover`/`degradation=worker_unreachable` (мой диспетчер `d9ec7a9`).
+3. **Security:** публичный `104.238.24.196:8081` → 000 (воркер слушает только AWG-IP);
+   A2A-эндпоинт → 401 без токена (карта публична 200).
+**Как:** AmneziaWG **userspace** (kernel-DKMS не собирается на обоих ядрах) —
+`awg-quick`+`amneziawg-go`, mesh `10.9.0.0/24` (EPYC=.1, VPS=.2), UDP 51821 (≠ чужой
+amnezia 45332), обфускация прошла DPI. Воркер на VPS = `docker run` образа
+`lldemo-worker` (перенёс с EPYC через реле), entrypoint-миграции обойдён
+(`--entrypoint uvicorn`). MCP EPYC открыт на туннель-IP (`compose.mcp-awg.yml`),
+worker-vps зарегистрирован смонтированным `workers.vps.yaml`
+(`compose.orchestrator-vps.yml`, дефолтный `config/workers.yaml` НЕ тронут → dev/CI
+одно-нодовые). systemd `awg-ll.service` enabled на обеих нодах (durable). Runbook
+as-built в `deploy/worker-node/README.md`. **G3 ✅ — критический путь к релизу открыт
+(остаётся G4/T-040).**
+
 ### 2026-07-13 ~19:25 · регулярная сессия — ✅ T-040 §6: выделенная секция Known Limitations в README (EN+RU)
 Старт по протоколу: `git pull` (up to date), COORDINATION, сверка с РЕАЛЬНОСТЬЮ — `eval_runs` до id 12 (локальные full здоровы: faith 0.93–0.99, citation 0.92–1.0), tree clean, последний коммит `d3237e9` (оркестратор). **Раннер `epyc-home` = ONLINE** (EPYC ожил ~18:45, оркестратор освободил ~5.6 ГБ). **Оркестратор АКТИВНО гонит T-041-eval на EPYC:** self-hosted `29275558934` (offline-режим, `6bb826e`) **отменён монитором диска в 19:03** («The operation was canceled» — НЕ метрики, а disk-guard <3G; durable-блокер `/opt/trading-bot` 69 ГБ = владелец), затем оркестратор **передиспетчил `29277164289` (in_progress с 19:06)**. Эту зону (T-041/eval.yml/EPYC) НЕ трогала. Диск C: dev = 100% (2.3G) → ollama/bench-локально невозможны (T-037 local = EPYC-домен). **Взяла непересекающийся чисто-локальный docs-слайс T-040 §6** (в трекере v1.0-dod.md block D значился «не-прогнанным локальным протоколом»): существующий Known-Limitations-список был 3-пунктовым и **зарыт под «Project status»**, без обязательного по §6 пункта «судьба RU-адаптера (Q-02)». **Сделано (`ed0af9d`, запушено):** промотировала в отдельную секцию `## Known limitations` (EN канон) + `## Известные ограничения` (RU зеркало, симметрично) с 7 честными пунктами — добавлены недостающие: частичное RU-покрытие (Q-02: MOEX ISS живой = pluggable-доказательство SBER/GAZP/LKOH, e-disclosure/ГИР БО = каркасы осознанно вне v1.0), глубина истории цен (T-033 Alpha Vantage free-tier ~100 дней compact), исключение GPU-бенчмарка (Q-07), скоуп публичного демо (US/EDGAR + per-IP rate/concurrency/cost-лимиты). Внутренние якоря EN (`#known-limitations`, `#data-sources--licensing`) + RU (`#известные-ограничения`, `#источники-данных-и-лицензии`) проверены против заголовков; `benchmarks/inference/REPORT.md` резолвится. Обновила v1.0-dod.md (block D §6 → ✅ done) + BACKLOG T-040 footnote-аддендум. Docs-only, аддитивно, не-хотспот; НЕ трогала prompts/config/compose/api.py/graph/eval/web. **Отклонение (честно):** это docs-deliverable §6 — не код-фикс; §1·§3·§4·§5 T-040 + внешний ревью README требуют живых проверок/железа (не тронуты). T-040 остаётся `[ ]` (G3 не закрыт). Зона свободна. **Владельцу для реального прогресса:** освободить диск EPYC (`/opt/trading-bot` 69 ГБ → eval помещается рядом с демо, закроет citation-гейт/T-041), решить Q-05/Q-22.
 
