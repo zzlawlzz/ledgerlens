@@ -47,10 +47,12 @@ Jmin = 40
 Jmax = 70
 S1 = 66
 S2 = 56
-H1 = 1234567890
-H2 = 987654321
-H3 = 192837465
-H4 = 564738291
+# H1..H4: pick four DISTINCT random integers > 4 (these are placeholders — the
+# live tunnel uses its own set; the values only need to match on both peers).
+H1 = 1111111111
+H2 = 2222222222
+H3 = 3333333333
+H4 = 4444444444
 [Peer]                       # the home node dials in (it is behind NAT)
 PublicKey = <epyc-pub>
 AllowedIPs = 10.9.0.1/32
