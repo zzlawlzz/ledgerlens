@@ -164,14 +164,34 @@ Gates **G1 ✅ G2 ✅**. Core tasks T-001…T-030 and T-032…T-034 are delivere
 The remaining phase-4 work — two-node deploy (T-031 / G3), Telegram alerting
 (T-035), public demo (T-036), benchmarks (T-037) and the v1.0 release
 (T-040 / G4) — is in progress, with live/hardware-gated steps outstanding.
-Current known limitations:
+See [Known limitations](#known-limitations) below for what is intentionally out
+of scope or still hardware-gated.
 
-- **faithfulness** groundedness metric is temporarily `non_blocking` in the eval
-  gate while T-041 closes (synthesis must not augment retrieved context) — it is
-  computed and reported, it just doesn't fail CI yet.
-- **Two-node deployment** (T-031, gate G3): dispatcher with round-robin +
-  local-preferred failover is done; the live remote-node deploy over AmneziaWG
-  is the remaining step.
-- **Local CPU tier** is slow on a dev laptop; multi-step questions take minutes.
-  Target hardware is a home node — see the [inference
-  benchmark](benchmarks/inference/REPORT.md) (local CPU part pending the node).
+## Known limitations
+
+Honest, current constraints of the v1.0 line. None are silent — each is either
+tracked to a task/gate or scoped out on purpose.
+
+- **`faithfulness` is `non_blocking` in the eval gate** while T-041 closes
+  (synthesis must not augment the retrieved context). The metric is computed and
+  reported on the quality dashboard; it just doesn't fail CI yet.
+- **Two-node deployment is not live yet** (T-031, gate G3). The dispatcher
+  (round-robin + local-preferred failover) and the secure-URL validator are
+  done; the remaining step is the live remote-node deploy over an AmneziaWG mesh.
+- **Local CPU inference is slow.** On a dev laptop multi-step questions take
+  minutes; the target is the home node (2× EPYC). The local-CPU part of the
+  [inference benchmark](benchmarks/inference/REPORT.md) and the local-model
+  choice (ADR-3) are still pending that hardware.
+- **Russian data coverage is partial (Q-02).** MOEX ISS is live (SBER / GAZP /
+  LKOH) and proves the pluggable adapter interface; e-disclosure and ГИР БО
+  remain interface scaffolds, deliberately out of the v1.0 scope. MOEX ISS data
+  is used for informational / demonstration purposes only — see
+  [Data sources & licensing](#data-sources--licensing).
+- **Price-history depth is limited by the free data tier.** The Alpha Vantage
+  free key returns only ~100 recent trading days (compact); longer history
+  requires a premium key. Prices are cached after first fetch.
+- **Benchmarks exclude GPU (Q-07).** Only local-CPU vs cloud-API inference is
+  compared; the vLLM / GPU benchmark is deferred by design.
+- **The public demo is scope-limited.** It serves the US / EDGAR corpus only and
+  applies per-IP rate, concurrency and daily-cost caps — it is a showcase, not
+  an SLA-backed service.
