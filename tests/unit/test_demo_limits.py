@@ -192,6 +192,28 @@ def test_chat_admission_rejects_eleventh_request_from_ip(monkeypatch: pytest.Mon
     assert "demo" in exc.value.detail.lower()
 
 
+def test_busy_rejection_does_not_burn_rate_quota(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A request bounced with 'demo is busy' (429 concurrency) must not consume
+    the caller's hourly rate quota. Otherwise the recommended retry would keep
+    counting and could lock a real user out for an hour without a single run
+    ever executing. ``_admit`` takes the concurrency slot before recording the
+    rate hit precisely to prevent this."""
+    import orchestrator.api as api
+
+    limiter = DemoLimiter(runs_per_hour_per_ip=10, max_concurrent_runs=1)
+    monkeypatch.setattr(api, "_DEMO_LIMITER", limiter)
+    req = _req(host="203.0.113.7")
+
+    limiter.acquire_slot()  # the single slot is occupied by an in-flight run
+    for _ in range(25):  # far more than the 10/hour rate cap
+        with pytest.raises(DemoLimitError) as exc:
+            api._admit("q", req)
+        assert exc.value.kind == "concurrency_limit"  # never "rate_limited"
+
+    limiter.release_slot()  # the in-flight run finishes, freeing the slot
+    api._admit("q", req)  # same IP still runs — the bounced attempts left no hits
+
+
 def test_build_limiter_reads_demo_profile() -> None:
     budgets = {
         "profiles": {

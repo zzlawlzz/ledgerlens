@@ -201,12 +201,22 @@ def _client_ip(request: Request) -> str:
 
 def _admit(question: str, request: Request) -> None:
     """Run all pre-run demo checks and take a concurrency slot, or raise
-    DemoLimitError. The slot is released in ``_execute_run``'s finally block."""
+    DemoLimitError. The slot is released in ``_execute_run``'s finally block.
+
+    Ordering matters: the concurrency slot is taken *before* the rate hit is
+    recorded so a request bounced with "demo is busy" (429 concurrency) does not
+    burn the caller's hourly quota — otherwise the recommended retry could lock a
+    real user out for an hour without ever getting a single run. If the rate
+    check then rejects, the just-taken slot is handed back (no leak)."""
     limiter = get_demo_limiter()
     limiter.check_question(question)
-    limiter.check_rate(_client_ip(request))
     limiter.check_daily_cost()
     limiter.acquire_slot()
+    try:
+        limiter.check_rate(_client_ip(request))
+    except BaseException:
+        limiter.release_slot()
+        raise
 
 
 class ChatRequest(BaseModel):
