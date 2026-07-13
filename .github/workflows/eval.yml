@@ -37,8 +37,13 @@ jobs:
     env:
       # Self-hosted runner: the HF Xet download accelerator writes to
       # ~/.cache/huggingface/xet, which failed with a permission error on the
-      # persistent runner home. Disable it — plain HF downloads work fine.
+      # persistent runner home. Disable it.
       HF_HUB_DISABLE_XET: "1"
+      # The EPYC node sits behind an RU uplink where the HuggingFace CDN
+      # (model blobs) is unreachable — the API resolves but downloads hang. So
+      # run fully offline against the fastembed models already provisioned on
+      # the runner (see "Link persistent fastembed models" below).
+      HF_HUB_OFFLINE: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -56,19 +61,19 @@ jobs:
           sed -i "s/^LOCAL_MODEL=.*/LOCAL_MODEL=/" .env
           sed -i "s/^A2A_TOKEN=.*/A2A_TOKEN=ci-a2a-token/" .env
 
-      # T-030 live finding: mcp-rag lazy-loads its ~3.5GB fastembed models on
-      # the FIRST rag_search call — on a cold runner that download blew past
-      # the worker's iteration deadline, so every narrative_rag case failed
-      # with "Could not load model ... from any source" (citation_coverage
-      # and faithfulness both read 0.0, not a RAG-quality issue). Caching the
-      # weights and warming them up on the host, before the mcp-rag container
-      # even starts, means the container's own lazy load hits a populated
-      # ./data/cache/fastembed bind mount and is instant.
-      - name: Cache fastembed models
-        uses: actions/cache@v4
-        with:
-          path: data/cache/fastembed
-          key: fastembed-${{ hashFiles('config/rag.yaml') }}
+      # Self-hosted (RU node): the HF CDN is unreachable, so the ~3.5GB
+      # fastembed models can't be downloaded here. Reuse the models already
+      # provisioned on the runner (the demo stack's cache) by symlinking them
+      # into the workspace — actions/checkout's clean wiped the previous run's
+      # copy, and the target lives outside the workspace so it survives. Docker
+      # bind-mounts follow the symlink, so the host warm-up and the mcp-rag
+      # container both hit a populated ./data/cache/fastembed offline.
+      - name: Link persistent fastembed models
+        run: |
+          mkdir -p data/cache
+          rm -rf data/cache/fastembed
+          ln -sfn "$HOME/ledgerlens-demo/data/cache/fastembed" data/cache/fastembed
+          echo "linked; models:"; ls "$HOME/ledgerlens-demo/data/cache/fastembed" | head
 
       - name: Warm up embedding/reranker models
         run: |
