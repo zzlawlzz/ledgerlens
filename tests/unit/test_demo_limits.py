@@ -161,19 +161,51 @@ def test_build_limiter_is_noop_off_demo_profile() -> None:
 class _FakeRequest:
     """Minimal stand-in for starlette.Request for the IP/admission helpers."""
 
-    def __init__(self, host: str = "203.0.113.7", forwarded: str | None = None) -> None:
-        self.headers = {"x-forwarded-for": forwarded} if forwarded else {}
+    def __init__(
+        self,
+        host: str = "203.0.113.7",
+        forwarded: str | None = None,
+        cf_connecting_ip: str | None = None,
+    ) -> None:
+        headers: dict[str, str] = {}
+        if forwarded:
+            headers["x-forwarded-for"] = forwarded
+        if cf_connecting_ip:
+            headers["cf-connecting-ip"] = cf_connecting_ip
+        self.headers = headers
         self.client = type("C", (), {"host": host})()
 
 
-def _req(host: str = "203.0.113.7", forwarded: str | None = None) -> Request:
-    return cast(Request, _FakeRequest(host, forwarded))
+def _req(
+    host: str = "203.0.113.7",
+    forwarded: str | None = None,
+    cf_connecting_ip: str | None = None,
+) -> Request:
+    return cast(Request, _FakeRequest(host, forwarded, cf_connecting_ip))
 
 
-def test_client_ip_prefers_forwarded_for() -> None:
+def test_client_ip_trusts_cf_connecting_ip() -> None:
+    """Behind Cloudflare the true, non-spoofable address is in CF-Connecting-IP."""
     from orchestrator.api import _client_ip
 
-    assert _client_ip(_req(host="10.0.0.1", forwarded="203.0.113.7, 10.0.0.1")) == "203.0.113.7"
+    assert _client_ip(_req(host="10.0.0.1", cf_connecting_ip="203.0.113.7")) == "203.0.113.7"
+
+
+def test_client_ip_ignores_spoofable_forwarded_for() -> None:
+    """X-Forwarded-For must NOT be trusted for rate limiting: nginx does not
+    rewrite it, so a visitor could rotate it to mint a fresh rate bucket per
+    request and defeat the demo budget guard (T-036 §1). CF-Connecting-IP wins
+    over any client-supplied XFF, and absent Cloudflare we use the direct peer."""
+    from orchestrator.api import _client_ip
+
+    # A forged XFF is ignored in favour of the authoritative Cloudflare header.
+    assert (
+        _client_ip(_req(host="10.0.0.1", forwarded="1.2.3.4", cf_connecting_ip="203.0.113.7"))
+        == "203.0.113.7"
+    )
+    # No Cloudflare header (dev / direct): the spoofable XFF is not trusted; the
+    # real TCP peer is used instead.
+    assert _client_ip(_req(host="198.51.100.9", forwarded="1.2.3.4")) == "198.51.100.9"
     assert _client_ip(_req(host="198.51.100.9")) == "198.51.100.9"
 
 

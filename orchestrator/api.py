@@ -190,12 +190,21 @@ async def _demo_limit_handler(_: Request, exc: DemoLimitError) -> JSONResponse:
 
 
 def _client_ip(request: Request) -> str:
-    """Caller IP for rate limiting. Behind the demo's reverse proxy / Cloudflare
-    Tunnel the real address is in X-Forwarded-For (first hop); fall back to the
-    direct peer."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Caller IP for the demo rate limit. This is a security control, so the
+    address must not be attacker-controllable.
+
+    Cloudflare sets ``CF-Connecting-IP`` to the true client address and overwrites
+    any client-supplied value; the demo's only ingress is the outbound cloudflared
+    tunnel, so this header is authoritative and cannot be spoofed. We deliberately
+    do NOT trust ``X-Forwarded-For``: nginx in front does not rewrite it
+    (no ``$proxy_add_x_forwarded_for``), so a client-supplied XFF passes through
+    untouched — every position in it is caller-controlled. Trusting it would let a
+    visitor mint a fresh rate-limit bucket per request by rotating the header and
+    defeat the whole budget-exhaustion protection (T-036 §1). Off Cloudflare (dev),
+    fall back to the direct TCP peer."""
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
     return request.client.host if request.client else "unknown"
 
 
