@@ -11,6 +11,7 @@ Library function only; the MCP wrapper arrives in T-027.
 
 from __future__ import annotations
 
+import asyncio
 import math
 from datetime import date
 from typing import Any
@@ -121,7 +122,9 @@ async def rag_search(
     search_config = load_yaml_config("rag")["search"]
     top_k = max(1, min(int(top_k), MAX_TOP_K))
     prefetch_limit = int(search_config.get("prefetch_limit", 20))
-    rerank_enabled = bool(search_config.get("rerank", {}).get("enabled", True))
+    rerank_cfg = search_config.get("rerank", {})
+    rerank_enabled = bool(rerank_cfg.get("enabled", True))
+    rerank_timeout_s = rerank_cfg.get("timeout_s")
     score_threshold = float(search_config.get("score_threshold", 0.0))
 
     embedder = embedder or ChunkEmbedder()
@@ -154,22 +157,47 @@ async def rag_search(
     if not candidates:
         return {"chunks": [], "no_results": True, "message": "no data in the loaded corpus"}
 
+    fusion_fallback = [(point, float(point.score or 0.0)) for point in candidates[:top_k]]
     if rerank_enabled:
         texts = [str(point.payload.get("text", "")) for point in candidates]  # type: ignore[union-attr]
-        scores = [_sigmoid(s) for s in embedder.rerank(query, texts)]
-        order = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
-        ranked = [(candidates[i], scores[i]) for i in order[:top_k]]
-        if ranked and ranked[0][1] < score_threshold:
-            get_logger(node="rag_search").info(
-                "below_threshold", best=round(ranked[0][1], 4), threshold=score_threshold
+        try:
+            if rerank_timeout_s:
+                # T-041/Q-22: bound the CPU cross-encoder so a starved node
+                # cannot let it outlast the worker's step deadline (which would
+                # abort rag_search mid-rerank -> zero citations). to_thread keeps
+                # the blocking model call off the event loop while we time it.
+                logits = await asyncio.wait_for(
+                    asyncio.to_thread(embedder.rerank, query, texts),
+                    float(rerank_timeout_s),
+                )
+            else:
+                logits = embedder.rerank(query, texts)
+        except TimeoutError:
+            # Graceful degradation: the reranker did not finish in time. Fall
+            # back to the RRF fusion order (already retrieved, best-first) so
+            # citations survive; skip the rerank-sigmoid floor since fusion
+            # scores are not comparable to it.
+            get_logger(node="rag_search").warning(
+                "rerank_timeout",
+                timeout_s=float(rerank_timeout_s),
+                candidates=len(candidates),
             )
-            return {
-                "chunks": [],
-                "no_results": True,
-                "message": "nothing relevant enough in the loaded corpus",
-            }
+            ranked = fusion_fallback
+        else:
+            scores = [_sigmoid(s) for s in logits]
+            order = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
+            ranked = [(candidates[i], scores[i]) for i in order[:top_k]]
+            if ranked and ranked[0][1] < score_threshold:
+                get_logger(node="rag_search").info(
+                    "below_threshold", best=round(ranked[0][1], 4), threshold=score_threshold
+                )
+                return {
+                    "chunks": [],
+                    "no_results": True,
+                    "message": "nothing relevant enough in the loaded corpus",
+                }
     else:
-        ranked = [(point, float(point.score or 0.0)) for point in candidates[:top_k]]
+        ranked = fusion_fallback
 
     chunks = [
         {

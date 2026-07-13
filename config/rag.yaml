@@ -19,6 +19,13 @@ search:
     # ADR-6 amendment (T-018): bge-reranker-v2-m3 not in fastembed 0.8;
     # jina-reranker-v2 is the supported multilingual cross-encoder.
     model: jinaai/jina-reranker-v2-base-multilingual
+    # T-041/Q-22: soft budget (seconds) for the CPU cross-encoder. On a starved
+    # node the rerank can outlast the worker's step deadline, which then aborts
+    # rag_search mid-flight and yields ZERO citations. When set, a timeout falls
+    # back to the RRF fusion order (already retrieved, best-first) so citations
+    # survive and the freed budget goes to synthesis. null = no timeout (run the
+    # reranker synchronously, exactly as before — the default for fast hardware).
+    timeout_s: null
   # Relevance floor after rerank (sigmoid of cross-encoder logit) ->
   # no_results=true (anti-hallucination). Calibrated 2026-07-10 (T-019) on the
   # 5-ticker demo corpus with jina-reranker-v2-base-multilingual:
