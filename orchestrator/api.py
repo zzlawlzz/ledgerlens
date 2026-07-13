@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 from ag_ui.core import RunAgentInput
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 
 from common.config import get_settings, load_yaml_config
@@ -404,13 +404,17 @@ async def _drain_events(
 async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse:
     ensure_stream_infrastructure()
     _admit(request.question, http_request)  # T-036 §1: demo limits (no-op in dev)
+    # The concurrency slot taken in _admit is owned by _execute_run's finally
+    # block, so it is only safe to stop guarding it once that task is scheduled.
+    # Cover the whole setup: any failure before create_task must release the slot,
+    # otherwise the slot leaks permanently (wedging the demo at "busy" 429).
     try:
         run_id = await create_run(request.question, request.mode)
+        queue, subscriber = _subscribe_run_events(str(run_id))
+        asyncio.create_task(_execute_run(run_id, request))
     except BaseException:
-        get_demo_limiter().release_slot()  # never leak the slot on dispatch failure
+        get_demo_limiter().release_slot()
         raise
-    queue, subscriber = _subscribe_run_events(str(run_id))
-    asyncio.create_task(_execute_run(run_id, request))
     return StreamingResponse(
         _drain_events(queue, subscriber),
         media_type="text/event-stream",
@@ -426,19 +430,26 @@ async def agui(body: RunAgentInput, http_request: Request) -> StreamingResponse:
     same thread keep their dialogue context.
     """
     ensure_stream_infrastructure()
+    # Validate the whole request BEFORE taking a demo slot or creating a run.
+    # AG-UI thread_id is an unbounded string, but session_id is capped at 128:
+    # building ChatRequest here turns an overlong thread_id into a clean 422
+    # instead of a ValidationError raised *after* a slot/run was allocated —
+    # which would leak the concurrency slot and orphan the run in 'running'.
     try:
         question = extract_question(body)
-    except ValueError as exc:
+        request = ChatRequest(question=question, session_id=body.thread_id)
+    except (ValueError, ValidationError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     _admit(question, http_request)  # T-036 §1: demo limits (no-op in dev)
+    # Guard the whole setup: any failure before create_task must release the
+    # slot owned thereafter by _execute_run's finally block (see /api/chat).
     try:
         run_id = await create_run(question, get_settings().app_mode)
+        queue, subscriber = _subscribe_run_events(str(run_id))
+        asyncio.create_task(_execute_run(run_id, request))
     except BaseException:
-        get_demo_limiter().release_slot()  # never leak the slot on dispatch failure
+        get_demo_limiter().release_slot()
         raise
-    queue, subscriber = _subscribe_run_events(str(run_id))
-    request = ChatRequest(question=question, session_id=body.thread_id)
-    asyncio.create_task(_execute_run(run_id, request))
 
     async def _stream() -> AsyncIterator[str]:
         try:
