@@ -39,7 +39,7 @@
 
 _Формат: `[роль] задача — каталоги — время начала — статус`_
 
-- `[регулярная] T-040 sync трекера DoD к реальности (G3 закрыт, сайт live) — docs/release/v1.0-dod.md, .gitignore, BACKLOG.md — 2026-07-14 ~старт — WIP.` Тронула ТОЛЬКО docs (`v1.0-dod.md`), `.gitignore` (+`awgbins/` — 178МБ node-local бинарники T-031, защита от случайного коммита), footnote BACKLOG. НЕ трогаю prompts/config/compose/api.py/graph/eval/web. Живьё проверено: GH Pages API — cname ledgerlens.space, https cert approved+enforced; сайт отдаёт полный контент; G3 закрыт (`d783e0d`, T-031 done). Обновляю §6 (🟡→✅ живой VPS/G3), §10 (публичный Pages-URL ⛔→✅), блокеры B/C/D к факту.
+- `[регулярная] T-040 sync трекера DoD к реальности + secret-скан публичного репо — ЗАВЕРШЕНО, закоммичено+запушено (main=ec9f760). Зона СВОБОДНА.` Тронула ТОЛЬКО `docs/release/v1.0-dod.md`, `.gitignore` (+`awgbins/`), `BACKLOG.md`³⁴ + COORDINATION. НЕ трогала prompts/config/compose/api.py/graph/eval/web. Живьё проверено: GH Pages API (cname ledgerlens.space, cert approved+enforced, deploy `29282878530` зелёный), сайт отдаёт полный контент, G3 закрыт (`d783e0d`). Трекер: §6 🟡→✅ (гейт G3), §10 публичный URL ⛔→✅, итог 7/11 done, блокер B закрыт. **Secret-скан публичного репо (чисто):** `.env` не в истории, нет sk-/AIza/PEM/id_ed25519 в tracked-файлах, единственные «пароли» = ephemeral CI-throwaway (`ci-password`, `ci-a2a-token`). Действий не потребовалось.
 
 - `[регулярная] T-040 §6: Known Limitations в README (dedicated section) — ЗАВЕРШЕНО кодом-доков, закоммичено+запушено (main=ed0af9d). Зона СВОБОДНА.` Тронула ТОЛЬКО `README.md`, `README.ru.md`, `docs/release/v1.0-dod.md` (блок D §6 → done), `BACKLOG.md` (T-040 footnote-аддендум). НЕ трогала prompts/config/compose/api.py/graph/eval/web. Промотировала 3-пунктовый список из «Project status» в отдельную секцию `## Known limitations` (EN канон) + `## Известные ограничения` (RU зеркало, симметрично) + добавила недостающие релиз-ограничения: частичное RU-покрытие (Q-02: MOEX ISS живой = pluggable-доказательство, e-disclosure/ГИР БО = каркасы вне v1.0), глубина цен (T-033 AV free-tier ~100 дней), исключение GPU (Q-07), скоуп публичного демо (US/EDGAR + лимиты). 7 честных пунктов. Внутренние якоря EN+RU проверены против заголовков; `benchmarks/inference/REPORT.md` резолвится. Docs-only, не-хотспот. Закрывает T-040 §6 (README-часть block D); T-040 остаётся `[ ]` (G3 не закрыт).
 
@@ -90,10 +90,13 @@ _Формат: `[роль] задача — каталоги — время на
 
 ---
 
-## Текущее состояние (обновлено 2026-07-12 03:15, оркестратор, main=`d13a433`)
+## Текущее состояние (обновлено 2026-07-14, регулярная сессия, main=`ec9f760`)
 
-**Гейты:** G1 ✅ G2 ✅. Сделано: T-001…T-030, **T-034 done**.
-`[wip]`: T-032, T-033, T-041.
+**Гейты:** G1 ✅ G2 ✅ **G3 ✅ (закрыт живьём 2026-07-13, T-031)**. **G4 открыт**
+(T-040 `[ ]`). Сделано: T-001…T-034, **T-031/T-032/T-033/T-034 done**.
+`[~]`: T-035, T-038, T-039. `[ ]`: T-036, T-037, T-040. `[wip]`: T-041
+(faithfulness достигнут; citation-гейт ждёт EPYC-раннера, Q-22).
+**DoD-трекер `docs/release/v1.0-dod.md`: 7 из 11 ✅ done** (синк 2026-07-14).
 
 **T-041 (faithfulness) — фактически достигнут, идёт финальная валидация:**
 - faithfulness ≥0.7 на ВСЕХ здоровых прогонах: eval_runs 7=0.989, 8=0.98
@@ -169,6 +172,9 @@ free-tier: только compact (~100 дней), история за стары�
 ---
 
 ## Журнал (append-only, новые записи сверху)
+
+### 2026-07-14 ~старт · регулярная сессия — T-040 sync трекера DoD к реальности (G3 закрыт, сайт live) + secret-скан публичного репо
+Старт по протоколу: `git pull` (up to date), COORDINATION, сверка с РЕАЛЬНОСТЬЮ — `eval_runs` до id 12 (последний full `a1761e4`: faith 0.98, citation 1.0, guardrail 1.0 — здоров), tree clean (только untracked `awgbins/`), последний коммит `5a40cd9` (оркестратор, 2026-07-13 23:39). **Никакой активной коллизии** (ничего не менялось <30 мин). **Ключевое расхождение памяти vs реальность:** с прошлой сессии оркестратор (1) закрыл гейт **G3 живьём** (T-031 `[done]` `422d3bb`/`d783e0d` — распределённый шаг на `vps-fi`, failover, security) и (2) вывел **сайт в паблик** (T-039 (a) `[done]` `5a40cd9`+CNAME `b6bb1c5` → https://ledgerlens.space), репо стал публичным. **DoD-трекер `docs/release/v1.0-dod.md` устарел** на этих двух пунктах. **Сделано (`ec9f760`, запушено):** синк трекера — §6 (распределённый A2A) 🟡 code-ready → ✅ **done** (все критерии G3 живьё-доказаны, остаток снят); §10 (README+сайт) «публичный Pages-URL» ⛔ → ✅ (**живьё проверено 2026-07-14:** Pages API — `cname: ledgerlens.space`, `https_certificate: approved`, `https_enforced: true`, deploy-workflow `29282878530` зелёный; WebFetch — сайт отдаёт полный контент: хиро/How it works/Architecture/Depth/Benchmarks/Run it yourself); сводная таблица 6→**7 из 11 ✅ done**; блокер-группа B (G3-деплой + включение Pages) → закрыта, **G4 формально открыт** (порядок гейтов соблюдён). Плюс `.gitignore` +`awgbins/` (178МБ node-local AmneziaWG-бинарники `amneziawg-go`/`awg`/`awg-quick` + relayed `worker.tgz` от T-031 — защита от случайного коммита в публичный репо). BACKLOG footnote³⁴ на T-040. **Secret-скан (репо публичный — превентивно):** чисто — `.env` никогда не был в истории (`git log --all --diff-filter=A`), нет `sk-`/`AIza`/PEM-ключей/`id_ed25519` в tracked-файлах, единственные совпадения «password/token» = ephemeral CI-throwaway в `.github/workflows/*.yml` (`ci-password`, `ci-a2a-token` — одноразовые для disposable-контейнеров, безопасны). Действий не потребовалось. Docs-only + `.gitignore`, не трогала хотспоты. **T-040 остаётся `[ ]`** (оставшиеся G4: §1 чистая-VM Quick Start, §2 устойчивый демо-URL [EPYC-диск+Q-05], §3 эталонный full-eval, §4 тег v1.0.0+Release+защита ветки, §5 санитарная проверка контура, §9 CPU-бенчмарк [EPYC]; Q-05/Q-22 открыты). **Владельцу:** освободить диск EPYC (`/opt/trading-bot` 69ГБ) + поднять раннер `epyc-home` → разблокирует §2/§3/§9 + citation-гейт/T-041; решить Q-05/Q-22 → критерий G4 «ноль блокирующих вопросов».
 
 ### 2026-07-13 ~20:00 · оркестратор — 🎉 T-031 ГЕЙТ G3 ЗАКРЫТ ЖИВЬЁМ (распределённость доказана)
 Владелец дал go на VPS. Развернул вторую ноду end-to-end, все критерии G3
