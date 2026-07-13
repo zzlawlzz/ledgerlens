@@ -1,0 +1,11 @@
+# Home-node orchestrator overlay (T-031, gate G3). Registers the VPS worker by
+# mounting the two-node registry over the baked-in single-node one — no rebuild.
+# Apply on the home node alongside the demo overlays, e.g.:
+#   docker compose -p lldemo -f docker-compose.yml \
+#     -f deploy/demo/docker-compose.demo.yml -f deploy/demo/compose.epyc.yml \
+#     -f deploy/worker-node/compose.mcp-awg.yml \
+#     -f deploy/worker-node/compose.orchestrator-vps.yml up -d app
+services:
+  app:
+    volumes:
+      - ./deploy/worker-node/workers.vps.yaml:/app/config/workers.yaml:ro

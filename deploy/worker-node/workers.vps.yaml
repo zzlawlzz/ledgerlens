@@ -1,0 +1,23 @@
+# Worker registry for the distributed deployment (T-031, gate G3): the local
+# in-process worker PLUS the remote worker on the VPS, reached over the
+# AmneziaWG tunnel at its private address. Mounted over /app/config/workers.yaml
+# on the home-node orchestrator by deploy/worker-node/compose.orchestrator-vps.yml
+# so the default config/workers.yaml (single node, used by dev/CI) is untouched.
+#
+# The dispatcher round-robins skill-matching workers and fails over to the
+# local one if the VPS is unreachable (orchestrator/graph.py, Q-20).
+workers:
+  - name: worker-local
+    url: ${WORKER_URL:local}
+    skills: [financial_sql_analysis, narrative_rag_analysis, price_history_analysis]
+  - name: worker-vps
+    # AmneziaWG tunnel address of the VPS worker (10.9.0.0/24 mesh, VPS = .2).
+    # Private/RFC-1918, so assert_worker_url_secure accepts plain http here —
+    # the link is already encrypted by the tunnel.
+    url: ${WORKER_VPS_URL:http://10.9.0.2:8081}
+    skills: [financial_sql_analysis, narrative_rag_analysis, price_history_analysis]
+
+tool_endpoints:
+  sql: ${MCP_SQL_URL:local}
+  rag: ${MCP_RAG_URL:local}
+  enrich: ${MCP_ENRICH_URL:local}
