@@ -32,6 +32,9 @@ snapshot/
 *.pgdump
 *.snapshot
 
+# T-031 AmneziaWG mesh binaries + relayed worker image (large, node-local, not source)
+awgbins/
+
 # OS / IDE
 .DS_Store
 Thumbs.db
