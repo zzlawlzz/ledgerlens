@@ -1,0 +1,28 @@
+# Optional demo overlay: route LLM (HTTPS) egress through a clean-egress proxy
+# on the remote worker node, reached over the AmneziaWG tunnel (10.9.0.2:8888).
+#
+# Why: when the home node's uplink intermittently blackholes direct TCP connects
+# to the LLM API (DPI on some networks), direct egress is erratic — runs still
+# complete (see the router's fast-fail + keepalive, model_router/router.py) but
+# with long cold-start stalls that make the UI look frozen. Routing egress
+# through the remote node's clean link gives steady, stall-free progress.
+#
+# Only HTTPS is proxied, so internal HTTP (MCP/A2A) and Postgres/Qdrant are
+# untouched; NO_PROXY is belt-and-braces for that. Requires the AWG tunnel up
+# (deploy/worker-node) and tinyproxy on the worker node bound to 10.9.0.2:8888,
+# Allow 10.9.0.1. Trade-off: egress now depends on the tunnel — drop this -f and
+# recreate app+worker to fall back to direct egress. Apply LAST:
+#   docker compose -p lldemo -f docker-compose.yml \
+#     -f deploy/demo/docker-compose.demo.yml -f deploy/demo/compose.epyc.yml \
+#     -f deploy/worker-node/compose.mcp-awg.yml \
+#     -f deploy/worker-node/compose.orchestrator-vps.yml \
+#     -f deploy/demo/compose.llmproxy.yml up -d --no-deps app worker
+services:
+  app:
+    environment:
+      HTTPS_PROXY: http://10.9.0.2:8888
+      NO_PROXY: localhost,127.0.0.1,10.9.0.0/24,172.16.0.0/12,mcp-sql,mcp-rag,mcp-enrich,postgres,qdrant,worker
+  worker:
+    environment:
+      HTTPS_PROXY: http://10.9.0.2:8888
+      NO_PROXY: localhost,127.0.0.1,10.9.0.0/24,172.16.0.0/12,mcp-sql,mcp-rag,mcp-enrich,postgres,qdrant,worker
