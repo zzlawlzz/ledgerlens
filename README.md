@@ -72,13 +72,14 @@ Full layer/component breakdown: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```bash
 cp .env.example .env   # set DEEPSEEK_API_KEY, POSTGRES_PASSWORD, POSTGRES_RO_PASSWORD, A2A_TOKEN
-make demo              # compose up (6 services) + ingest on empty DB + smoke
+make demo              # full local stack + ingest on empty DB + smoke
 # UI: http://localhost:3000
 ```
 
-`make demo` brings up postgres, qdrant, ollama (the `local` profile),
-orchestrator, A2A worker and web (nginx); on an empty database it ingests SEC
-EDGAR tickers (disk-cached) together with embeddings, then runs a smoke suite:
+`make demo` brings up postgres, qdrant, ollama (the `local` profile), the
+orchestrator, the A2A worker, the MCP tool servers (sql / rag / enrich) and web
+(nginx); on an empty database it ingests SEC EDGAR tickers (disk-cached)
+together with embeddings, then runs a smoke suite:
 numeric questions, a narrative question with citations, the AG-UI protocol and
 UI availability.
 
@@ -159,8 +160,11 @@ primary source before relying on them.
 
 ## Project status
 
-Gates **G1 ✅ G2 ✅**; core tasks T-001…T-037 delivered, G3 (two-node) and G4
-(v1.0 release) in progress. Current known limitations:
+Gates **G1 ✅ G2 ✅**. Core tasks T-001…T-030 and T-032…T-034 are delivered.
+The remaining phase-4 work — two-node deploy (T-031 / G3), Telegram alerting
+(T-035), public demo (T-036), benchmarks (T-037) and the v1.0 release
+(T-040 / G4) — is in progress, with live/hardware-gated steps outstanding.
+Current known limitations:
 
 - **faithfulness** groundedness metric is temporarily `non_blocking` in the eval
   gate while T-041 closes (synthesis must not augment retrieved context) — it is
