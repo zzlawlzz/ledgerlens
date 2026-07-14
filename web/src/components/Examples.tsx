@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { API_BASE } from "../config";
 import { useI18n } from "../i18n";
 import type { ExampleQuestion } from "../types";
 
@@ -8,7 +9,7 @@ export function Examples({ onPick, disabled }: { onPick: (q: string) => void; di
   const [examples, setExamples] = useState<ExampleQuestion[]>([]);
 
   useEffect(() => {
-    fetch("/api/examples")
+    fetch(`${API_BASE}/api/examples`)
       .then((response) => (response.ok ? response.json() : { examples: [] }))
       .then((body: { examples?: ExampleQuestion[] }) =>
         setExamples(Array.isArray(body.examples) ? body.examples : []),

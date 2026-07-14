@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     app_mode: str = "us"
     app_env: str = "dev"
     budget_profile: str = "dev"
+    # Comma-separated origins allowed to call the API cross-origin (empty =
+    # none; deny-by-default). Set when the frontend is served from another
+    # origin, e.g. a static Pages host, so its small JSON/SSE calls are allowed.
+    cors_allow_origins: str = ""
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432

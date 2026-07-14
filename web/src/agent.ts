@@ -1,6 +1,7 @@
 // AG-UI client wiring (T-024): one HttpAgent per session (thread = session).
 import { HttpAgent } from "@ag-ui/client";
 
+import { API_BASE } from "./config";
 import type { Citation, KeyValue, PlanStep, RunSummary, RunView } from "./types";
 
 export const EMPTY_RUN: RunView = {
@@ -148,7 +149,7 @@ function applyCustom(view: RunView, event: StreamEvent): RunView {
 }
 
 export async function runQuestion(question: string, update: Update): Promise<void> {
-  const agent = new HttpAgent({ url: "/agui", threadId: sessionId() });
+  const agent = new HttpAgent({ url: `${API_BASE}/agui`, threadId: sessionId() });
   agent.messages = [{ id: crypto.randomUUID(), role: "user", content: question }];
   update(() => ({ ...EMPTY_RUN, phase: "planning" }));
   try {

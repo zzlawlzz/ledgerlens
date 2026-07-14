@@ -1,11 +1,15 @@
 name: site
 
-# Deploy the static presentation site (site/) to GitHub Pages on push to main.
+# Deploy the static presentation site (site/) to GitHub Pages, plus the demo
+# frontend built into site/app/. The demo frontend is served statically from
+# the reliable Pages edge (not the home-node tunnel, which truncates the large
+# JS bundle); it calls the tunnelled API (small JSON/SSE) cross-origin.
 on:
   push:
     branches: [main]
     paths:
       - "site/**"
+      - "web/**"
       - ".github/workflows/site.yml"
   workflow_dispatch:
 
@@ -27,6 +31,20 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build demo frontend into site/app
+        working-directory: web
+        env:
+          VITE_BASE: /app/
+          VITE_API_BASE_URL: https://app.ledgerlens.space
+        run: |
+          npm install -g pnpm
+          pnpm install --frozen-lockfile
+          pnpm run build
+          mkdir -p ../site/app
+          cp -r dist/. ../site/app/
       - uses: actions/configure-pages@v5
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3

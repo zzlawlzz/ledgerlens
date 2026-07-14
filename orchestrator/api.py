@@ -163,6 +163,21 @@ app = FastAPI(
 )
 app.include_router(monitor_router)  # T-035 monitoring layer B (/api/monitor/*)
 
+# CORS: opt-in allowlist (deny-by-default). Enabled when the frontend is served
+# from another origin (static Pages host) and its /agui + /api calls are
+# cross-origin — the large static bundle lives off the tunnel, only small
+# JSON/SSE responses come from here.
+_CORS_ORIGINS = [o.strip() for o in get_settings().cors_allow_origins.split(",") if o.strip()]
+if _CORS_ORIGINS:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_CORS_ORIGINS,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 
 _DEMO_LIMITER: DemoLimiter | None = None
 

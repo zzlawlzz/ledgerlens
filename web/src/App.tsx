@@ -5,6 +5,7 @@ import { AnalysisPanel } from "./components/AnalysisPanel";
 import { Chat } from "./components/Chat";
 import { Examples } from "./components/Examples";
 import { Header } from "./components/Header";
+import { API_BASE } from "./config";
 import type { Lang } from "./i18n";
 import { detectLang, LangContext } from "./i18n";
 import type { RunView } from "./types";
@@ -16,7 +17,7 @@ export function App() {
   const [demo, setDemo] = useState<boolean>(false);
 
   useEffect(() => {
-    fetch("/api/examples")
+    fetch(`${API_BASE}/api/examples`)
       .then((response) => (response.ok ? response.json() : { mode: "us" }))
       .then((body: { mode?: string; demo?: boolean }) => {
         setMode(body.mode ?? "us");
