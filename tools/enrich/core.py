@@ -230,8 +230,10 @@ def parse_alphavantage_json(
 async def _fetch_alphavantage(ticker: str, limiter: ProviderLimiter) -> str:
     """One provider download with pacing, daily cap and retries.
 
-    Alpha Vantage's daily endpoint has no date-range parameters — it returns
-    the full history (``outputsize=full``) and the caller filters. Raises
+    Alpha Vantage's daily endpoint has no date-range parameters — the free
+    tier returns the compact window (``outputsize=compact``, last ~100 trading
+    days; ``full`` is premium, see the ``params`` note below) and the caller
+    filters to ``[date_from, date_to]``. Raises
     ``ToolError``/``SourceUnavailableError``; the caller converts them into
     observation errors. Every attempt consumes one unit of the daily budget.
     """
