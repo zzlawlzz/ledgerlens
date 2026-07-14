@@ -153,6 +153,20 @@ body {
 .error {
   color: var(--err);
 }
+.retry {
+  margin-top: 10px;
+  padding: 6px 16px;
+  border: 1px solid var(--err);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--err);
+  cursor: pointer;
+  font: inherit;
+}
+.retry:hover {
+  background: var(--err);
+  color: #fff;
+}
 .answer-text {
   white-space: pre-wrap;
   font-family: inherit;

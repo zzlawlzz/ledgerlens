@@ -148,22 +148,52 @@ function applyCustom(view: RunView, event: StreamEvent): RunView {
   }
 }
 
+// A flaky tunnel can leave the SSE half-open: events stop arriving with no
+// error and no EOF, so a run would otherwise hang forever on "planning". The
+// AG-UI client ignores the server's keep-alive comments, so we watch the event
+// stream itself: if nothing arrives within STALL_MS (reset on every event) the
+// stream is treated as dead. Generous enough to sit through one slow LLM call,
+// short enough to surface a stuck run for retry instead of a silent freeze.
+const STALL_MS = 120000;
+
 export async function runQuestion(question: string, update: Update): Promise<void> {
   const agent = new HttpAgent({ url: `${API_BASE}/agui`, threadId: sessionId() });
   agent.messages = [{ id: crypto.randomUUID(), role: "user", content: question }];
   update(() => ({ ...EMPTY_RUN, phase: "planning" }));
-  try {
-    await agent.runAgent(
+
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  let resetStall = (): void => {};
+  const stalled = new Promise<"stalled">((resolve) => {
+    resetStall = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => resolve("stalled"), STALL_MS);
+    };
+    resetStall();
+  });
+
+  const stream = agent
+    .runAgent(
       {},
       {
         onEvent({ event }) {
+          resetStall();
           update((view) => applyEvent(view, event as unknown as StreamEvent));
         },
       },
-    );
-  } catch (error) {
+    )
+    .then(() => "ok" as const)
+    .catch((error) => {
+      update((view) =>
+        view.phase === "done" ? view : { ...view, phase: "error", error: String(error) },
+      );
+      return "ok" as const;
+    });
+
+  const outcome = await Promise.race([stream, stalled]);
+  clearTimeout(stallTimer);
+  if (outcome === "stalled") {
     update((view) =>
-      view.phase === "done" ? view : { ...view, phase: "error", error: String(error) },
+      view.phase === "done" ? view : { ...view, phase: "error", error: "stalled" },
     );
   }
 }

@@ -3,7 +3,15 @@ import { useState } from "react";
 import { useI18n } from "../i18n";
 import type { RunView } from "../types";
 
-export function Chat({ run, onAsk }: { run: RunView; onAsk: (q: string) => void }) {
+export function Chat({
+  run,
+  onAsk,
+  onRetry,
+}: {
+  run: RunView;
+  onAsk: (q: string) => void;
+  onRetry?: () => void;
+}) {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const busy = run.phase === "planning" || run.phase === "running";
@@ -23,9 +31,20 @@ export function Chat({ run, onAsk }: { run: RunView; onAsk: (q: string) => void 
         {run.phase === "planning" && <p className="status">{t("waiting_plan")}</p>}
         {run.phase === "running" && !run.answer && <p className="status">{t("running")}</p>}
         {run.phase === "error" && (
-          <p className="error" data-testid="run-error">
-            {run.error?.includes("429") ? t("rate_limited") : `${t("error_state")} ${run.error}`}
-          </p>
+          <div className="error" data-testid="run-error">
+            <p>
+              {run.error?.includes("429")
+                ? t("rate_limited")
+                : run.error === "stalled"
+                  ? t("stalled")
+                  : `${t("error_state")} ${run.error}`}
+            </p>
+            {onRetry && (
+              <button type="button" className="retry" onClick={onRetry}>
+                {t("retry")}
+              </button>
+            )}
+          </div>
         )}
         {run.answer && (
           <article className="answer" data-testid="answer">

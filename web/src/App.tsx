@@ -15,6 +15,7 @@ export function App() {
   const [run, setRun] = useState<RunView>(EMPTY_RUN);
   const [mode, setMode] = useState<string>("us");
   const [demo, setDemo] = useState<boolean>(false);
+  const [lastQuestion, setLastQuestion] = useState<string>("");
 
   useEffect(() => {
     fetch(`${API_BASE}/api/examples`)
@@ -32,8 +33,13 @@ export function App() {
   }, []);
 
   const ask = useCallback((question: string) => {
+    setLastQuestion(question);
     void runQuestion(question, (mutate) => setRun(mutate));
   }, []);
+
+  const retry = useCallback(() => {
+    if (lastQuestion) void runQuestion(lastQuestion, (mutate) => setRun(mutate));
+  }, [lastQuestion]);
 
   const busy = run.phase === "planning" || run.phase === "running";
 
@@ -43,7 +49,7 @@ export function App() {
         <Header run={run} mode={mode} demo={demo} />
         <Examples onPick={ask} disabled={busy} />
         <main className="columns">
-          <Chat run={run} onAsk={ask} />
+          <Chat run={run} onAsk={ask} onRetry={retry} />
           <AnalysisPanel run={run} />
         </main>
       </div>
