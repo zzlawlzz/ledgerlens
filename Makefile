@@ -61,8 +61,12 @@ snapshot:  ## Export a fresh demo-corpus snapshot from the running stack (after 
 	@echo "Snapshot written to $(SNAPSHOT_DIR)/ — upload it as the eval-demo-snapshot artifact"
 	@echo "(gh workflow run eval-snapshot.yml) so 'make seed' can fetch it on a clean machine."
 
-eval:  ## Run eval harness against a running stack
-	@echo "TODO(T-029): eval harness"
+EVAL_PROFILE ?= ci
+EVAL_BASE_URL ?= http://localhost:8000
+EVAL_CONCURRENCY ?= 1
+
+eval:  ## Run eval harness against a running stack (EVAL_PROFILE=ci|full)
+	uv run python -m eval.run --profile $(EVAL_PROFILE) --base-url $(EVAL_BASE_URL) --concurrency $(EVAL_CONCURRENCY)
 
 demo-ingest:  ## Ingest the demo set (live EDGAR with disk cache) incl. embeddings
 	uv run python -m ingestion.run --source edgar --tickers AAPL,MSFT,NVDA,GOOGL,AMZN --years 3 --embed
