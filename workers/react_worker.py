@@ -175,9 +175,19 @@ def _build_tools(
 
     async def _traced_call(tool_name: str, arguments: dict[str, Any]) -> str:
         import time
+        import uuid
 
+        # Stable per-call id so a started/finished pair can be matched even when
+        # the same tool runs more than once with overlapping lifetimes (the
+        # ReAct agent runs several tool calls from one turn concurrently). The
+        # AG-UI adapter keys TOOL_CALL_START/END off this; keying by tool name
+        # alone collided and emitted an unstarted END (T-023 defect).
+        call_id = str(uuid.uuid4())
         usage.tool_calls += 1
-        await bus.publish("tool_call_started", {"tool": tool_name, "arguments": arguments})
+        await bus.publish(
+            "tool_call_started",
+            {"tool": tool_name, "tool_call_id": call_id, "arguments": arguments},
+        )
         started = time.perf_counter()
         result = await impls[tool_name](**arguments)
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -187,6 +197,7 @@ def _build_tools(
             "tool_call_finished",
             {
                 "tool": tool_name,
+                "tool_call_id": call_id,
                 "status": "error" if is_error else "ok",
                 # Measured at the call site: survives trace relay over A2A,
                 # includes the MCP transport (T-027).

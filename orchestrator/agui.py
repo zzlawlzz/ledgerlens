@@ -95,11 +95,13 @@ class TraceToAgUiAdapter:
                     )
                 ]
             case "tool_call_started":
-                tool = str(payload.get("tool", "tool"))
-                call_id = str(uuid.uuid4())
-                self._open_tool_calls[tool] = call_id
                 import json
 
+                tool = str(payload.get("tool", "tool"))
+                # Prefer the worker's stable per-call id; fall back to a fresh id
+                # keyed by tool name for legacy traces that don't carry one.
+                call_id = str(payload.get("tool_call_id") or uuid.uuid4())
+                self._open_tool_calls[tool] = call_id
                 return [
                     ToolCallStartEvent(tool_call_id=call_id, tool_call_name=tool),
                     ToolCallArgsEvent(
@@ -109,7 +111,23 @@ class TraceToAgUiAdapter:
                 ]
             case "tool_call_finished":
                 tool = str(payload.get("tool", "tool"))
-                call_id = self._open_tool_calls.pop(tool, str(uuid.uuid4()))
+                explicit = payload.get("tool_call_id")
+                if explicit is not None:
+                    # Pair by the worker-provided id: correct even when the same
+                    # tool ran more than once with overlapping lifetimes. Keying
+                    # by name alone collided (the second start overwrote the
+                    # first) and the orphaned finish emitted an unstarted END,
+                    # which the AG-UI client rejects with "No active tool call
+                    # found" and aborts the run.
+                    call_id = str(explicit)
+                    if self._open_tool_calls.get(tool) == call_id:
+                        self._open_tool_calls.pop(tool, None)
+                else:
+                    popped = self._open_tool_calls.pop(tool, None)
+                    if popped is None:
+                        # No matching start on record: never emit an orphan END.
+                        return []
+                    call_id = popped
                 return [
                     ToolCallEndEvent(tool_call_id=call_id),
                     # Status/preview for the UI: a failed call is highlighted

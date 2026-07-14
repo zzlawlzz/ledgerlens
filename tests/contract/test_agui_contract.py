@@ -99,6 +99,65 @@ def test_tool_call_start_end_pairing_with_shared_id() -> None:
     assert json.loads(args[0].delta) == {"sql": "SELECT 1"}
 
 
+def _translate(traces: list[TraceEvent]) -> list[Any]:
+    adapter = TraceToAgUiAdapter(thread_id="t1", run_id="r1")
+    events: list[Any] = []
+    for trace_event in traces:
+        events.extend(adapter.translate(trace_event))
+    return events
+
+
+def _assert_no_orphan_tool_end(events: list[Any]) -> None:
+    """Every TOOL_CALL_END must reference an id opened by a prior START.
+
+    An unstarted END is exactly what makes @ag-ui/client abort the run with
+    "No active tool call found with ID ...".
+    """
+    started: set[str] = set()
+    for e in events:
+        if e.type == EventType.TOOL_CALL_START:
+            started.add(e.tool_call_id)
+        elif e.type == EventType.TOOL_CALL_END:
+            assert e.tool_call_id in started, f"orphan TOOL_CALL_END {e.tool_call_id}"
+
+
+def test_overlapping_same_tool_calls_pair_by_explicit_id() -> None:
+    # The ReAct agent runs two sql_query calls from one turn concurrently, so
+    # their started/finished events interleave. With per-call ids each END pairs
+    # with its own START regardless of interleaving.
+    traces = [
+        _trace(1, "run_started", {"question": "compare", "mode": "us"}),
+        _trace(2, "tool_call_started", {"tool": "sql_query", "tool_call_id": "a", "arguments": {}}),
+        _trace(3, "tool_call_started", {"tool": "sql_query", "tool_call_id": "b", "arguments": {}}),
+        _trace(4, "tool_call_finished", {"tool": "sql_query", "tool_call_id": "a", "status": "ok"}),
+        _trace(5, "tool_call_finished", {"tool": "sql_query", "tool_call_id": "b", "status": "ok"}),
+        _trace(6, "run_finished", {"status": "succeeded", "answer": "ok"}),
+    ]
+    events = _translate(traces)
+    _assert_no_orphan_tool_end(events)
+    ends = {e.tool_call_id for e in events if e.type == EventType.TOOL_CALL_END}
+    assert ends == {"a", "b"}  # both calls closed, none fabricated
+    # every event still encodes cleanly with the protocol encoder
+    encoder = EventEncoder()
+    for e in events:
+        encoder.encode(e)
+
+
+def test_overlapping_same_tool_without_ids_never_emits_orphan_end() -> None:
+    # Legacy traces (no tool_call_id): the second start overwrites the first
+    # under the shared name key. The finish that finds no id must be dropped,
+    # never fabricated into an unstarted END.
+    traces = [
+        _trace(1, "run_started", {"question": "q", "mode": "us"}),
+        _trace(2, "tool_call_started", {"tool": "sql_query", "arguments": {}}),
+        _trace(3, "tool_call_started", {"tool": "sql_query", "arguments": {}}),
+        _trace(4, "tool_call_finished", {"tool": "sql_query", "status": "ok"}),
+        _trace(5, "tool_call_finished", {"tool": "sql_query", "status": "ok"}),
+        _trace(6, "run_finished", {"status": "succeeded", "answer": "ok"}),
+    ]
+    _assert_no_orphan_tool_end(_translate(traces))
+
+
 def test_text_message_pairing_and_full_answer_reassembly() -> None:
     events = _translate_all()
     start = next(e for e in events if e.type == EventType.TEXT_MESSAGE_START)
