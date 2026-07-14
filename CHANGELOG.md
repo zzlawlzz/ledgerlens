@@ -30,19 +30,14 @@ Polish & packaging (Phase 4). In progress.
   benchmark ([report](benchmarks/vector/REPORT.md)).
 - **Bilingual documentation** (T-038): EN [README.md](README.md) +
   RU [README.ru.md](README.ru.md); this changelog.
+- **Presentation site** (T-039): bilingual (EN/RU) static site published at
+  https://ledgerlens.space via GitHub Pages.
 
 ### In progress
-- **T-031** (gate G3): live remote-node deploy over an AmneziaWG mesh — the
-  dispatcher (round-robin + local-preferred failover) is done; live VPS bring-up
-  remains.
-- **T-041**: RAG groundedness — the placeholder-leak root cause is fixed and
-  `faithfulness ≥ 0.7` is reached on the full 41-case set; the citation-coverage
-  gate on the free CI runner is the remaining item (moving eval to a self-hosted
-  runner).
 - **T-037**: local CPU inference part (2–3 Ollama candidates) + ADR-3 close-out
   — pending the home EPYC node.
-- **T-039 / T-040**: presentation site and the v1.0 clean-machine release (gate
-  G4).
+- **T-040** (gate G4): the v1.0 clean-machine release — a tagged release, GitHub
+  Release notes and branch protection remain.
 
 ## [G3] — Depth markers (Phase 3)
 
@@ -53,8 +48,15 @@ Signals that this is not a pet project.
   LLM-as-a-judge metrics, gated in GitHub Actions with thresholds in
   `config/eval-thresholds.yaml`; scores published to the Grafana Quality board.
 - **A2A worker split** (T-023/T-031): the worker runs as a separate service over
-  the A2A contract; dispatcher supports multiple nodes with failover. Live
-  two-node deploy is the remaining G3 item (see Unreleased).
+  the A2A contract; the dispatcher supports multiple nodes with local-preferred
+  failover. A live two-node deploy over an AmneziaWG mesh (home EPYC + FI VPS) —
+  with a remote worker step, failover trace and perimeter security verified
+  end-to-end — closes gate **G3**.
+- **RAG groundedness** (T-041): synthesis is constrained to the retrieved
+  context — a deterministic ungrounded-claim stripper plus a fix for a
+  placeholder-leak in the ReAct worker. `faithfulness` is promoted to a blocking
+  eval threshold (≥ 0.7), validated by two consecutive green full-eval runs on a
+  self-hosted runner.
 - **MCP tool servers** (T-027): `sql_query`/`rag_search`/`price_enrich` are
   full MCP servers; the worker connects as an MCP client (lib mode for tests).
 - **RU data source** (T-032): MOEX ISS adapter behind the pluggable
