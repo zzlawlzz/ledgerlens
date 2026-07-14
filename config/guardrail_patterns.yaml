@@ -21,3 +21,28 @@ patterns:
   - '(?i)\b(good|great|right)\s+time\s+to\s+(buy|sell|enter|exit)'
   - '(?i)\ballocate\s+\d+\s*%\s+of\s+(your\s+)?(portfolio|capital)'
   - '(?i)\b(go\s+long|go\s+short)\b'
+
+# Input-side advice-SEEKING QUESTIONS (T-022 addendum). Matched against the
+# user's question at intake to short-circuit to a non-advice reply BEFORE an
+# expensive, doomed research plan runs (an open-ended "what should I buy to get
+# rich" has no analyzable target). Deliberately narrow: only OPEN-ENDED advice
+# ("what/where to invest", "which stocks to buy", "how to get rich"). Advice
+# about a NAMED company ("should I sell NVDA?", "good time to buy Tesla?") is
+# left to the normal pipeline, which answers with that company's facts + the
+# non-advice refusal. Analytical questions (revenue, risks, comparisons) must
+# NOT match — covered by tests/unit/test_guardrail.py.
+question_patterns:
+  # --- RU ---
+  - '(?i)\bво\s+что\s+(вложи|вкладыва|инвестир)'
+  - '(?i)\bкуда\s+(вложи|инвестир|вклад)'
+  - '(?i)\bкак(ие|ую)?\s+(акци|бумаг|актив|фонд)\w*\s+.{0,20}?(купить|покупать|брать|выбрать)'
+  - '(?i)\bчто\s+(мне\s+)?(купить|покупать)\b.{0,25}(бирж|акци|портфел|инвестир|деньг)'
+  - '(?i)(разбогатеть|стать\s+богат|сколотить\s+состоян|как\s+заработать\s+на\s+(бирж|акци|инвест))'
+  - '(?i)\b(посоветуй|подскажи|порекоменду)\w*.{0,30}(вложи|инвестир|акци|портфел|бумаг|купить)'
+  # --- EN ---
+  - '(?i)\bwhat\s+(should\s+i|to|can\s+i)\s+(buy|invest\s+in|pick)\b'
+  - '(?i)\bwhich\s+(stocks?|shares?|companies|assets?|funds?)\s+(should\s+i\s+|to\s+|do\s+i\s+)?(buy|invest|pick|choose)'
+  - '(?i)\bwhere\s+(should\s+i|to|do\s+i)\s+invest'
+  - '(?i)\bhow\s+(to|do\s+i|can\s+i)\s+(get|become)\s+rich'
+  - '(?i)\bhow\s+to\s+make\s+money\s+(on|in|with|from)\s+(the\s+)?(stock|market|invest|share)'
+  - '(?i)\binvest\s+in\s+to\s+(get|become)\s+rich'

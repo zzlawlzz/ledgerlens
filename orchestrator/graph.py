@@ -129,6 +129,7 @@ class OrchestratorState(TypedDict, total=False):
     partial: bool
     partial_reason: str
     answer: str
+    advice_refused: bool
     started_monotonic: float
 
 
@@ -189,8 +190,8 @@ class Orchestrator:
         graph.set_entry_point("classify")
         graph.add_conditional_edges(
             "classify",
-            lambda state: "execute" if state.get("plan") else "plan",
-            {"execute": "execute", "plan": "plan"},
+            self._route_after_classify,
+            {"execute": "execute", "plan": "plan", "finalize": "finalize"},
         )
         graph.add_edge("plan", "execute")
         graph.add_edge("execute", "assess")
@@ -223,8 +224,22 @@ class Orchestrator:
 
     # -- nodes ---------------------------------------------------------------
 
+    @staticmethod
+    def _route_after_classify(state: OrchestratorState) -> str:
+        """advice short-circuit -> finalize; simple -> execute; else -> plan."""
+        if state.get("advice_refused"):
+            return "finalize"
+        return "execute" if state.get("plan") else "plan"
+
     async def _classify(self, state: OrchestratorState) -> OrchestratorState:
-        """Route simple questions to a one-step plan; reset per-run channels."""
+        """Route simple questions to a one-step plan; reset per-run channels.
+
+        First, short-circuit an open-ended advice-seeking question (T-022): it
+        has no analyzable target, so planning it wastes budget on a doomed
+        research plan. Reply with the non-advice message and skip to finalize.
+        """
+        from orchestrator.guardrail import build_advice_question_refusal, is_advice_question
+
         fresh: OrchestratorState = {
             "plan": [],
             "results": {},
@@ -235,6 +250,15 @@ class Orchestrator:
             "partial_reason": "",
             "answer": "",
         }
+        if is_advice_question(state["question"]):
+            self._log.info("advice_question_refused")
+            fresh["answer"] = build_advice_question_refusal(state["question"])
+            fresh["advice_refused"] = True
+            await self._publish(
+                "guardrail",
+                {"triggered": True, "action": "refuse_advice_question", "spans": []},
+            )
+            return fresh
         try:
             verdict = await self._router.chat_structured(
                 "route",

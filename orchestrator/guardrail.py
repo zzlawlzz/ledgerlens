@@ -51,10 +51,57 @@ class GuardVerdict(BaseModel):
     spans: list[str] = Field(default_factory=list)
 
 
+ADVICE_QUESTION_REFUSAL_RU = (
+    "Я аналитический инструмент по публичной отчётности компаний и не даю "
+    "инвестиционных рекомендаций — что покупать, продавать или держать, куда "
+    "вложить деньги или как «разбогатеть». Такие решения зависят от ваших "
+    "целей и допустимого риска и остаются за вами.\n\n"
+    "Зато я умею работать с фактами: выручка, прибыль и денежный поток компании "
+    "по годам, динамика и сравнение метрик, раскрытые в 10-K риски — с цитатами "
+    "на первоисточник (SEC/MOEX). Например: «Сравни динамику выручки Apple и "
+    "Microsoft за 3 года» или «Какие риски цепочки поставок Apple раскрывает в 10-K»."
+)
+ADVICE_QUESTION_REFUSAL_EN = (
+    "I am an analytics tool over public company filings and I don't give "
+    "investment advice — what to purchase, offload or keep, where to put your "
+    "money, or how to build wealth. Those choices depend on your goals and risk "
+    "tolerance and stay with you.\n\n"
+    "What I can do is the facts: a company's revenue, profit and cash flow over "
+    "the years, trends and metric comparisons, disclosed 10-K risks — with "
+    'citations to the primary source (SEC/MOEX). For example: "Compare Apple '
+    'and Microsoft revenue over 3 years" or "What supply-chain risks does '
+    'Apple disclose in its 10-K".'
+)
+
+
 @cache
 def _compiled_patterns() -> list[re.Pattern[str]]:
     raw = load_yaml_config("guardrail_patterns")["patterns"]
     return [re.compile(pattern) for pattern in raw]
+
+
+@cache
+def _compiled_question_patterns() -> list[re.Pattern[str]]:
+    raw = load_yaml_config("guardrail_patterns").get("question_patterns", [])
+    return [re.compile(pattern) for pattern in raw]
+
+
+def is_advice_question(question: str) -> bool:
+    """Input-side check: does the QUESTION itself seek investment advice?
+
+    A cheap, deterministic regex gate (no LLM) run at intake so an open-ended
+    advice request ("what should I invest in to get rich?") is declined up front
+    instead of driving an expensive, doomed research plan. Scoped to open-ended
+    asks; advice about a named company is left to the pipeline. Advice that
+    slips through is still caught downstream by ``check_advice`` on the answer.
+    """
+    return any(pattern.search(question) for pattern in _compiled_question_patterns())
+
+
+def build_advice_question_refusal(question: str) -> str:
+    """Non-advice reply for an advice-seeking question, with the disclaimer."""
+    body = ADVICE_QUESTION_REFUSAL_RU if is_russian(question) else ADVICE_QUESTION_REFUSAL_EN
+    return f"{body}\n\n_{disclaimer_for(question)}_"
 
 
 def find_advice_spans(text: str) -> list[str]:

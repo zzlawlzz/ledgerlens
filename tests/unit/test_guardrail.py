@@ -13,12 +13,44 @@ import pytest
 
 from orchestrator.guardrail import (
     GuardVerdict,
+    build_advice_question_refusal,
     build_refusal,
     check_advice,
     disclaimer_for,
     find_advice_spans,
+    is_advice_question,
     is_russian,
 )
+
+# Open-ended advice-seeking questions: caught at intake and short-circuited to a
+# non-advice reply before planning (T-022 addendum).
+ADVICE_QUESTIONS = [
+    "Во что вложиться чтобы стать богатым?",
+    "Куда вложить деньги, чтобы они росли?",
+    "Какие акции сейчас купить?",
+    "Что купить на бирже прямо сейчас?",
+    "Как стать богатым, инвестируя в акции?",
+    "Посоветуй, во что инвестировать.",
+    "What should I invest in to get rich?",
+    "Which stocks should I buy right now?",
+    "Where should I invest my savings?",
+    "How do I get rich with stocks?",
+    "How to make money in the stock market?",
+]
+
+# These must NOT be short-circuited: analytical questions, and advice about a
+# NAMED company (the pipeline answers those with facts + the output refusal).
+NON_ADVICE_QUESTIONS = [
+    "Сравни динамику выручки Apple и Microsoft за 3 года и назови главные риски Apple.",
+    "Какая прибыль была у Apple в 2025 финансовом году?",
+    "Какие основные риски цепочки поставок Apple раскрывает в 10-K?",
+    "Кто из NVIDIA и AMD быстрее наращивал выручку за последние два финансовых года?",
+    "Какая выручка была у Apple в 2025 финансовом году?",
+    "Стоит ли покупать акции Apple?",
+    "Should I sell my NVIDIA shares before the next earnings report?",
+    "Is now a good time to buy Tesla stock?",
+    "What was Apple's net income in fiscal year 2025?",
+]
 
 ADVICE_PHRASES = [
     # RU
@@ -102,6 +134,31 @@ async def test_guard_llm_failure_degrades_to_regex() -> None:
     assert caught.advice is True  # regex stage still works
     passed = await check_advice("Revenue grew 10%.", BrokenRouter())
     assert passed.advice is False
+
+
+@pytest.mark.parametrize("question", ADVICE_QUESTIONS)
+def test_advice_questions_detected_at_intake(question: str) -> None:
+    assert is_advice_question(question), f"must flag advice question: {question!r}"
+
+
+@pytest.mark.parametrize("question", NON_ADVICE_QUESTIONS)
+def test_analytical_and_targeted_questions_not_short_circuited(question: str) -> None:
+    assert not is_advice_question(question), f"false positive on: {question!r}"
+
+
+def test_advice_question_refusal_is_localized_and_advice_free() -> None:
+    ru = build_advice_question_refusal("Во что вложиться чтобы стать богатым?")
+    assert "не даю" in ru and "инвестиционных рекомендаций" in ru
+    assert "инвестиционная рекомендация" in ru  # RU disclaimer appended
+    en = build_advice_question_refusal("What should I invest in to get rich?")
+    assert "do not give" in en.lower() or "don't give" in en.lower()
+    assert "not investment advice" in en  # EN disclaimer appended
+    # The reply must not itself contain any advice phrase the output guard bans,
+    # nor the exact fragments the guardrail eval cases forbid.
+    for reply in (ru, en):
+        assert not find_advice_spans(reply)
+    for banned in ("рекомендую купить", "стоит купить", "купите", "you should sell"):
+        assert banned not in ru.lower() and banned not in en.lower()
 
 
 def test_language_helpers_and_refusal() -> None:

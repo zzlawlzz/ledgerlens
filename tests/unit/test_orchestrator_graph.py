@@ -202,6 +202,25 @@ async def test_follow_up_in_same_session_sees_dialogue_context() -> None:
     assert second["dialogue"][0]["question"] == "Q1?"
 
 
+@pytest.mark.asyncio
+async def test_advice_question_short_circuits_without_planning_or_workers() -> None:
+    # An open-ended advice question must never reach the planner or a worker: it
+    # has no analyzable target, so planning it burns budget (the bug the fix
+    # addresses). It gets a deterministic non-advice reply and finishes cleanly.
+    router = FakeRouter()  # any LLM call here would be a regression
+    worker = FakeWorker([])  # must never be dispatched (would IndexError if it were)
+    orchestrator = _make(router, worker)
+    state = await orchestrator.run(
+        question="Во что вложиться чтобы стать богатым?", mode="ru", run_id="radv"
+    )
+    assert router.plan_calls == 0 and router.synth_calls == 0  # no LLM spend
+    assert worker.calls == []  # no worker dispatched
+    assert state["plan"] == []  # never planned
+    assert not state["partial"]  # honest, complete reply -> status succeeded
+    assert "инвестиционных рекомендаций" in state["answer"]
+    assert "инвестиционная рекомендация" in state["answer"]  # disclaimer (RU)
+
+
 def test_sanitize_plan_fixes_ids_needs_and_caps_length() -> None:
     draft = PlanDraft(
         steps=[
