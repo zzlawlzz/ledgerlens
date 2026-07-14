@@ -97,7 +97,11 @@ jobs:
           workflow_conclusion: success
           if_no_artifact_found: fail
 
-      - run: docker compose up -d postgres qdrant --wait
+      # -f docker-compose.ci.yml drops the dev-only MCP host-port publishes so
+      # the eval stack can coexist with the always-on demo / AWG stack on the
+      # self-hosted EPYC runner (which binds the MCP servers on 10.9.0.1:8765/…).
+      # Without it, `up` aborts with "port is already allocated" before scoring.
+      - run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres qdrant --wait
       - name: Migrate schema
         env:
           POSTGRES_HOST: localhost
@@ -110,7 +114,7 @@ jobs:
 
       # No `ollama` profile (T-017/T-018 no-local mode) + empty LOCAL_MODEL
       # above: the router drops the local tier at startup, cloud-only routing.
-      - run: docker compose up -d --wait app worker mcp-sql mcp-rag
+      - run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --wait app worker mcp-sql mcp-rag
 
       - name: Run eval
         id: eval_run
@@ -205,7 +209,7 @@ jobs:
           retention-days: 90
 
       - if: always()
-        run: docker compose down -v
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
 
       - name: Fail on gate violations
         run: |
