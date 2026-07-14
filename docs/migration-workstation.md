@@ -1,0 +1,72 @@
+# Migration: backend EPYC → workstation; VPS as thin public door (2026-07)
+
+## Decision
+
+Retire the EPYC home node from LedgerLens. Its uplink is the single root of a
+whole class of failures seen repeatedly — connect-blackholes to cloud APIs,
+Cloudflare-tunnel truncation of large responses, and unlogged hard freezes. The
+cause is that node's line, **not** the region: the workstation on the same
+project has good wired internet and none of these symptoms.
+
+New topology:
+
+```
+user → GitHub Pages (frontend + site) → API → VPS (public door) → tunnel → workstation (backend)
+```
+
+- **Workstation** (this Windows PC — good wired internet, RX 6900XT, E: disk,
+  Docker) = **full backend**: Postgres + Qdrant (data on E:), MCP tools,
+  embeddings, orchestrator + workers, local GPU LLM tier.
+- **VPS** (small, public IP) = **thin public door**: reverse-tunnel endpoint +
+  nginx reverse-proxy to the workstation. The PC dials out (it is behind home
+  NAT); no chatty logic on the VPS.
+- **GitHub Pages** = frontend (`ledgerlens.space/app/`) + presentation site —
+  unchanged, reliable. The frontend calls the API at the VPS address.
+- **LLM tiering** (router already supports it, T-016/T-017): local GPU (6900XT
+  via Ollama) for the light, frequent task classes (route/extract/guard);
+  DeepSeek cloud for the strong ones (plan/synthesize/judge). Good wired internet
+  makes the cloud tier reliable from here.
+
+### Why orchestrator on the workstation, not the VPS
+
+One run makes dozens of orchestrator↔LLM/MCP/DB calls. Keeping the orchestrator
+next to the data and the LLM makes those local (fast, robust); only the public
+API/SSE crosses the tunnel. Putting the orchestrator on the VPS would push every
+one of those calls back across the tunnel, and the small VPS cannot host the data
+or embeddings anyway.
+
+## Phases (keep the current EPYC demo up until cutover)
+
+1. **Backend on the workstation** (parallel to EPYC): move the Docker disk image
+   to E: (Docker Desktop → Settings → Resources → Advanced → Disk image location)
+   so volumes are fast and on the spacious disk; `docker compose` the stack up;
+   ingest the corpus from EDGAR (good internet reaches sec.gov) or transfer the
+   EPYC volumes; local smoke test (numbers from DB, RAG citations).
+2. **Local GPU LLM**: install Ollama (Windows, ROCm — 6900XT is gfx1030, supported);
+   pull a model sized to 16 GB VRAM; wire the router `local` tier (OLLAMA_BASE_URL,
+   model); re-run the inference benchmark (T-037) on GPU; set which task classes
+   route local vs cloud.
+3. **VPS public door**: PC→VPS reverse tunnel (WireGuard / frp / SSH -R — pick one);
+   VPS nginx reverse-proxy of the API hostname → tunnel → workstation orchestrator;
+   TLS (Let's Encrypt on the VPS, or Cloudflare in front).
+4. **Cutover**: point the API DNS at the VPS; set the frontend `VITE_API_BASE_URL`
+   to the VPS address and redeploy Pages; verify end-to-end (Pages → VPS → PC);
+   stop the EPYC demo stack.
+5. **Eval / CI + docs**: move the self-hosted eval runner to the workstation;
+   update ARCHITECTURE.md / README / deploy runbooks to the new topology; retire
+   the EPYC-specific artifacts.
+
+## Retires
+
+EPYC demo stack, EPYC self-hosted GitHub runner, the AmneziaWG mesh (EPYC↔VPS),
+and the Cloudflare tunnel to the EPYC. The EPYC stays as the owner's trading-bot
+host — out of LedgerLens scope.
+
+## Open items to decide during execution
+
+- **Reverse-tunnel mechanism** (WireGuard vs frp vs SSH -R vs cloudflared-from-PC).
+- **VPS choice** (the 957 MB worker VPS is enough for nginx + tunnel; confirm or
+  pick a bigger one).
+- **Local model** (e.g. qwen2.5:14b vs 7b) — decided by the GPU benchmark.
+- **Workstation-as-server** posture (kept on when the demo should be reachable;
+  Docker autostart; the PC↔VPS tunnel as a persistent service).
