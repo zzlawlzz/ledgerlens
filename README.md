@@ -160,9 +160,9 @@ primary source before relying on them.
 
 ## Project status
 
-Gates **G1 ✅ G2 ✅**. Core tasks T-001…T-030 and T-032…T-034 are delivered.
-The remaining phase-4 work — two-node deploy (T-031 / G3), Telegram alerting
-(T-035), public demo (T-036), benchmarks (T-037) and the v1.0 release
+Gates **G1 ✅ G2 ✅ G3 ✅**. Core tasks T-001…T-034 and T-041 are delivered.
+The remaining phase-4 work — Telegram alerting (T-035), public-demo hardening
+(T-036), benchmarks (T-037), presentation site (T-039) and the v1.0 release
 (T-040 / G4) — is in progress, with live/hardware-gated steps outstanding.
 See [Known limitations](#known-limitations) below for what is intentionally out
 of scope or still hardware-gated.
@@ -172,12 +172,6 @@ of scope or still hardware-gated.
 Honest, current constraints of the v1.0 line. None are silent — each is either
 tracked to a task/gate or scoped out on purpose.
 
-- **`faithfulness` is `non_blocking` in the eval gate** while T-041 closes
-  (synthesis must not augment the retrieved context). The metric is computed and
-  reported on the quality dashboard; it just doesn't fail CI yet.
-- **Two-node deployment is not live yet** (T-031, gate G3). The dispatcher
-  (round-robin + local-preferred failover) and the secure-URL validator are
-  done; the remaining step is the live remote-node deploy over an AmneziaWG mesh.
 - **Local CPU inference is slow.** On a dev laptop multi-step questions take
   minutes; the target is the home node (2× EPYC). The local-CPU part of the
   [inference benchmark](benchmarks/inference/REPORT.md) and the local-model
