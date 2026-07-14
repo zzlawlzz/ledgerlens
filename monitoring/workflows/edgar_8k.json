@@ -1,4 +1,5 @@
 {
+  "id": "ledgerlens8kmon1",
   "name": "LedgerLens — EDGAR 8-K monitor (layer B)",
   "active": false,
   "settings": { "executionOrder": "v1" },

@@ -54,6 +54,18 @@ docker compose exec n8n n8n import:workflow --input=/workflows/edgar_8k.json
 #    (or trigger a manual "Execute workflow" run to test immediately).
 ```
 
+The workflow JSON carries a **stable `id`** (`ledgerlens8kmon1`), so the import
+is an idempotent upsert — re-running step 3 refreshes the workflow in place
+instead of erroring or creating a duplicate. (Current `n8n` rejects an import
+with no `id`: `NOT NULL constraint failed: workflow_entity.id`.) The compose
+service also pins `N8N_LISTEN_ADDRESS=0.0.0.0` so the editor server comes up on
+IPv4-only Docker hosts (n8n's `::` default crash-loops there).
+
+**Verified (criterion 4):** on a clean `n8n-data` volume, steps 2–3 above
+restore the workflow in ~15 s end-to-end (image cached), well under the 10-min
+bound; `n8n list:workflow` then shows `ledgerlens8kmon1`. A truly cold machine
+adds the one-time n8n image pull (~2.5 GB) on top.
+
 ## Add / change a watched company
 
 The watchlist lives in the **Fetch recent 8-K events** Code node (a small array
