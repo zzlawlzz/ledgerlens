@@ -112,7 +112,7 @@ guardrail) и завершается `run_finished` с ответом, `key_valu
 
 ## Ссылки
 
-- **Живое демо:** https://app.ledgerlens.space *(публичное, с лимитами по частоте
+- **Живое демо:** https://ledgerlens.space/app/ *(публичное, с лимитами по частоте
   и бюджету; едет с self-hosted-ноды за Cloudflare Tunnel — может быть недоступно
   во время обслуживания).*
 - **Дашборды Grafana:** `http://localhost:3001` при self-host (анонимный Viewer)

@@ -115,7 +115,7 @@ frontend uses `POST /agui` (the AG-UI protocol). Self-correction scenario:
 
 ## Links
 
-- **Live demo:** https://app.ledgerlens.space *(public, rate- and budget-limited;
+- **Live demo:** https://ledgerlens.space/app/ *(public, rate- and budget-limited;
   served from a self-hosted node behind a Cloudflare Tunnel — may be offline
   during maintenance).*
 - **Grafana dashboards:** `http://localhost:3001` when self-hosting (anonymous
