@@ -9,6 +9,7 @@ without hitting the API.
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from typing import Any
 
 from eval.golden.schema import (
@@ -25,9 +26,17 @@ def _digits(text: str) -> str:
 
 
 def _sig_digits(value: float, n: int = 6) -> str:
-    """First n significant digits of |value|, as a string — formats vary
-    ("$416.161 billion" vs "416,161,000,000") but the leading digits don't."""
-    return _digits(str(int(round(abs(value)))))[:n]
+    """First n significant digits of |value| (sign, decimal point and leading
+    zeros dropped), as a string — formats vary ("$416.161 billion" vs
+    "416,161,000,000", "0.15" vs "15%") but the significant digits don't.
+
+    Uses the exact decimal expansion rather than ``int(round(value))`` so that
+    sub-unit values (a 0.15 margin would otherwise round to "0" and match any
+    answer) and fractional values (1234.56 would otherwise round to "1235",
+    shifting the trailing digit away from "123456") keep their real digits.
+    Behaviour is unchanged for integer values (all current golden numerics)."""
+    digits = _digits(format(Decimal(str(abs(value))), "f")).lstrip("0")
+    return digits[:n]
 
 
 def _within_tolerance(actual: float, expected: float, tolerance_pct: float) -> bool:

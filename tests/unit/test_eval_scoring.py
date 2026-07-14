@@ -59,6 +59,32 @@ def test_numeric_regression_injection_flips_a_passing_case() -> None:
     assert broken["passed"] is False
 
 
+def test_numeric_subunit_value_does_not_spuriously_pass() -> None:
+    """A sub-unit golden (e.g. a 0.15 margin) must not match on the digit "0".
+
+    ``int(round(0.15))`` is 0, so the old answer-text fallback checked whether
+    "0" appeared in the answer digits — true for essentially any answer. The
+    fix keeps the real significant digits ("15"), so an unrelated answer fails
+    and a correct one still passes."""
+    expected = NumericExpectation(value=0.15, unit="ratio", tolerance_pct=1.0)
+    # A wrong answer that merely contains a "0" would spuriously pass the old
+    # `"0" in digits` check; the real significant digits ("15") reject it.
+    wrong = score_numeric(expected, answer="The operating margin was 0.40.", key_values={})
+    assert wrong["passed"] is False
+    correct = score_numeric(expected, answer="The operating margin was 0.15.", key_values={})
+    assert correct["passed"] is True
+    assert correct["match"] == "answer_text"
+
+
+def test_numeric_fractional_value_keeps_trailing_digits() -> None:
+    """Rounding 1234.56 to an int shifted the last digit ("1235"); the exact
+    decimal expansion keeps "123456" so the formatted answer matches."""
+    expected = NumericExpectation(value=1234.56, unit="USD", tolerance_pct=1.0)
+    result = score_numeric(expected, answer="EPS came in at $1,234.56.", key_values={})
+    assert result["passed"] is True
+    assert result["match"] == "answer_text"
+
+
 def test_numeric_ratio_matches_key_values_pair() -> None:
     expected = NumericExpectation(
         ratio_of=[215938000000, 130497000000], unit="ratio", tolerance_pct=2.0
