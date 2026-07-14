@@ -1,5 +1,5 @@
 # LedgerLens — task automation. TODO-stubs are implemented by their backlog tasks.
-.PHONY: up down lint test test-integration ingest demo-ingest demo seed snapshot eval smoke db-up db-migrate db-reset bench-vector bench-inference
+.PHONY: up up-no-local down lint test test-integration ingest reindex demo-ingest demo seed snapshot eval smoke db-up db-migrate db-reset bench-vector bench-inference
 
 lint:  ## Static checks: format, lint, types
 	uv run ruff format --check .
