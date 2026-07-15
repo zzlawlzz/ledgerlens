@@ -30,6 +30,16 @@ trust:
     - bbc.com
     - bbc.co.uk
     - economist.com
+    - globenewswire.com # official company press-release wires (earnings, 8-K)
+    - businesswire.com
+    - prnewswire.com
+  # Leftmost-label match (not a suffix): a company investor-relations subdomain
+  # (investor.nvidia.com, ir.tesla.com) reports the company's own numbers —
+  # primary but self-reported, so "medium": below an audited SEC filing.
+  ir_subdomains:
+    - investor
+    - investors
+    - ir
 
 # Durable cache freshness: a query answered within this many days is served from
 # web_documents without hitting the network.

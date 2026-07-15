@@ -73,6 +73,23 @@ def test_trust_for_domain_tiers() -> None:
     assert trust_for_domain("some-blog.example", TIERS) == "low"
 
 
+def test_trust_for_domain_ir_subdomain_and_wire() -> None:
+    tiers = {
+        "tier1": ["sec.gov"],
+        "tier2": ["globenewswire.com"],
+        "ir_subdomains": ["investor", "investors", "ir"],
+    }
+    assert trust_for_domain("www.sec.gov", tiers) == "high"  # audited filing wins
+    # A company IR subdomain is primary-but-self-reported -> medium.
+    assert trust_for_domain("investor.nvidia.com", tiers) == "medium"
+    assert trust_for_domain("ir.tesla.com", tiers) == "medium"
+    assert trust_for_domain("www.globenewswire.com", tiers) == "medium"  # press wire, tier2
+    # A marketing/newsroom host is not IR, and "investor" only counts as the
+    # leftmost label (not a substring) -> both stay low.
+    assert trust_for_domain("nvidianews.nvidia.com", tiers) == "low"
+    assert trust_for_domain("myinvestor.com", tiers) == "low"
+
+
 def test_decode_ddg_url() -> None:
     target = "https://www.reuters.com/business/apple-ceo"
     assert _decode_ddg_url(_ddg_link(target)) == target

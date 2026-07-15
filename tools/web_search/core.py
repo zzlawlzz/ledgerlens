@@ -88,7 +88,14 @@ DEFAULT_TIERS: dict[str, list[str]] = {
         "theguardian.com",
         "bbc.com",
         "bbc.co.uk",
+        "globenewswire.com",
+        "businesswire.com",
+        "prnewswire.com",
     ],
+    # Leftmost-label match: a company investor-relations subdomain (investor.*,
+    # ir.*) reports the company's own numbers — primary but self-reported, so
+    # "medium": below an audited SEC filing (high), above an unknown blog (low).
+    "ir_subdomains": ["investor", "investors", "ir"],
 }
 
 _sleep = asyncio.sleep
@@ -122,6 +129,7 @@ def _trust_tiers(config: dict[str, Any]) -> dict[str, list[str]]:
     return {
         "tier1": list(tiers.get("tier1", DEFAULT_TIERS["tier1"])),
         "tier2": list(tiers.get("tier2", DEFAULT_TIERS["tier2"])),
+        "ir_subdomains": list(tiers.get("ir_subdomains", DEFAULT_TIERS["ir_subdomains"])),
     }
 
 
@@ -136,10 +144,15 @@ def _matches(domain: str, suffix: str) -> bool:
 
 
 def trust_for_domain(domain: str, tiers: dict[str, list[str]]) -> str:
-    """high / medium / low for a domain against the tier lists."""
+    """high / medium / low for a domain against the tier lists.
+
+    An investor-relations subdomain (investor.*, ir.*) is "medium": a primary
+    but self-reported company source, below an audited SEC filing (high)."""
     if any(_matches(domain, s) for s in tiers.get("tier1", [])):
         return "high"
     if any(_matches(domain, s) for s in tiers.get("tier2", [])):
+        return "medium"
+    if domain.split(".")[0] in tiers.get("ir_subdomains", []):
         return "medium"
     return "low"
 
