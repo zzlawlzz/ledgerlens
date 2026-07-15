@@ -19,6 +19,7 @@ from tools.web_search import core
 from tools.web_search.core import (
     _decode_ddg_url,
     normalize_query,
+    parse_brave,
     parse_ddg_html,
     parse_tavily,
     trust_for_domain,
@@ -28,8 +29,10 @@ from tools.web_search.core import (
 
 
 def _no_tavily(monkeypatch: Any) -> None:
-    """Force the scrape path: no Tavily key configured."""
-    monkeypatch.setattr(core, "get_settings", lambda: SimpleNamespace(tavily_api_key=""))
+    """Force the scrape path: no search-API key configured."""
+    monkeypatch.setattr(
+        core, "get_settings", lambda: SimpleNamespace(brave_api_key="", tavily_api_key="")
+    )
 
 
 TIERS = {
@@ -130,6 +133,29 @@ def test_parse_tavily_ranks_by_trust() -> None:
     assert results[-1]["trust"] == "low"
 
 
+def test_parse_brave_strips_html_and_ranks() -> None:
+    data = {
+        "web": {
+            "results": [
+                {
+                    "title": "blog",
+                    "url": "https://blog.example.com/y",
+                    "description": "a <strong>blog</strong>",
+                },
+                {
+                    "title": "SEC",
+                    "url": "https://www.sec.gov/x",
+                    "description": "official <strong>filing</strong>",
+                },
+            ]
+        }
+    }
+    results = parse_brave(data, max_results=6, tiers=TIERS)
+    assert results[0]["domain"] == "sec.gov" and results[0]["trust"] == "high"
+    assert results[0]["snippet"] == "official filing"  # <strong> markup stripped
+    assert results[-1]["trust"] == "low"
+
+
 # --------------------------------------------------------------- orchestration
 
 
@@ -215,7 +241,9 @@ async def test_cache_miss_scrapes_and_upserts(monkeypatch: pytest.MonkeyPatch) -
 
 @pytest.mark.asyncio
 async def test_tavily_primary_when_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(core, "get_settings", lambda: SimpleNamespace(tavily_api_key="k"))
+    monkeypatch.setattr(
+        core, "get_settings", lambda: SimpleNamespace(brave_api_key="", tavily_api_key="k")
+    )
     payload = {
         "results": [
             {"title": "SEC filing", "url": "https://www.sec.gov/x", "content": "official"},
@@ -232,6 +260,27 @@ async def test_tavily_primary_when_key_set(monkeypatch: pytest.MonkeyPatch) -> N
     assert tav.call_count == 1 and ddg.call_count == 0  # Tavily used, scraper untouched
     assert result["results"][0]["domain"] == "sec.gov"
     assert result["trust_summary"]["level"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_brave_primary_when_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        core, "get_settings", lambda: SimpleNamespace(brave_api_key="k", tavily_api_key="")
+    )
+    payload = {
+        "web": {
+            "results": [{"title": "SEC", "url": "https://www.sec.gov/x", "description": "official"}]
+        }
+    }
+    with respx.mock:
+        brave = respx.get(core.BRAVE_URL).mock(return_value=httpx.Response(200, json=payload))
+        ddg = respx.post(core.DDG_HTML_URL).mock(return_value=httpx.Response(200, text=""))
+        result = await web_search(
+            "nvidia revenue 2025", session_factory=_factory([], []), limiter=_limiter()
+        )
+    assert result["source"] == "web"
+    assert brave.call_count == 1 and ddg.call_count == 0  # Brave used, scraper untouched
+    assert result["results"][0]["domain"] == "sec.gov"
 
 
 @pytest.mark.asyncio

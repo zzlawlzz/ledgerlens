@@ -5,9 +5,10 @@ lacks), search the open web, tag each source by a domain-trust tier, and cache
 the findings in ``web_documents`` so a repeat query never hits the network
 again. Cache-first, mirroring ``price_enrich``'s discipline:
 
-    web_documents cache  →  Tavily search API (TAVILY_API_KEY, free tier)
+    web_documents cache  →  a search API (Brave / Tavily, whichever key is set —
+                            reliable, reachable from RU)
                          →  scrape DuckDuckGo (no key; often bot-blocked from a
-                            server IP — that is exactly why Tavily is primary)
+                            server IP — that is why an API is primary)
                          →  DeepSeek fallback (model knowledge, low trust)
 
 Errors are *observations* (``{error, retryable}``), never exceptions — the run
@@ -46,6 +47,7 @@ from common.logging import get_logger
 # designed for programmatic access, so it returns reliably where server-side
 # scraping gets bot-blocked. Falls back to scraping, then DeepSeek.
 TAVILY_URL = "https://api.tavily.com/search"
+BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 DDG_HTML_URL = "https://html.duckduckgo.com/html/"
 # A browser-like UA: DuckDuckGo serves its HTML SERP to browsers, not to bots.
 BROWSER_UA = (
@@ -345,19 +347,71 @@ async def _tavily_search(
     return parse_tavily(response.json(), max_results, tiers)
 
 
+def parse_brave(
+    data: dict[str, Any], max_results: int, tiers: dict[str, list[str]]
+) -> list[dict[str, Any]]:
+    """Brave /web/search JSON -> ranked, trust-tagged results (pure). Brave puts
+    web results under ``web.results`` with an HTML-marked ``description``."""
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    web = data.get("web") or {}
+    for item in web.get("results") or []:
+        url = str(item.get("url", ""))
+        if not url.startswith("http"):
+            continue
+        domain = _domain_of(url)
+        if not domain or domain in seen:
+            continue
+        seen.add(domain)
+        # Brave bolds matched terms with <strong>; strip the markup.
+        snippet = re.sub(r"<[^>]+>", "", str(item.get("description") or ""))
+        results.append(
+            {
+                "title": str(item.get("title") or "")[:TITLE_MAX],
+                "url": url,
+                "domain": domain,
+                "snippet": snippet[:SNIPPET_MAX],
+                "trust": trust_for_domain(domain, tiers),
+            }
+        )
+        if len(results) >= max_results:
+            break
+    return _rank(results)
+
+
+async def _brave_search(
+    query: str, api_key: str, timeout_s: float, max_results: int, tiers: dict[str, list[str]]
+) -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=timeout_s)) as client:
+        response = await client.get(
+            BRAVE_URL,
+            params={"q": query, "count": max_results},
+            headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
+        )
+    if response.status_code != 200:
+        raise SourceUnavailableError(f"brave returned HTTP {response.status_code}")
+    return parse_brave(response.json(), max_results, tiers)
+
+
 async def _search(
     query: str, timeout_s: float, max_results: int, tiers: dict[str, list[str]]
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """Reliable-first backend chain: Tavily API (if TAVILY_API_KEY) → DDG scrape.
-    Returns (results, error); an empty list + error means both backends failed."""
-    api_key = get_settings().tavily_api_key
-    if api_key:
+    """Reliable-first backend chain: Brave/Tavily API (whichever key is set) →
+    DDG scrape. Returns (results, error); empty + error means all backends failed."""
+    settings = get_settings()
+    api_providers = (
+        (settings.brave_api_key, _brave_search),
+        (settings.tavily_api_key, _tavily_search),
+    )
+    for key, fetch in api_providers:
+        if not key:
+            continue
         try:
-            results = await _tavily_search(query, api_key, timeout_s, max_results, tiers)
+            results = await fetch(query, key, timeout_s, max_results, tiers)
             if results:
                 return results, None
         except (SourceUnavailableError, httpx.HTTPError, ValueError):
-            pass  # fall through to the scraper
+            continue  # try the next backend
     try:
         return await _scrape(query, timeout_s, max_results, tiers), None
     except (SourceUnavailableError, httpx.HTTPError) as error:
