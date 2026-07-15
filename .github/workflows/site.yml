@@ -38,7 +38,7 @@ jobs:
         working-directory: web
         env:
           VITE_BASE: /app/
-          VITE_API_BASE_URL: https://app.ledgerlens.space
+          VITE_API_BASE_URL: https://api.ledgerlens.space
         run: |
           npm install -g pnpm
           pnpm install --frozen-lockfile
