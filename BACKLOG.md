@@ -874,6 +874,21 @@
 > `#data-sources--licensing` / RU-эквиваленты) проверены против заголовков.
 > Docs-only, не-хотспот; трекер v1.0-dod.md блок D §6 обновлён. Остаток T-040 §1·§3·
 > §4·§5 + внешний ревью — не тронуты (нужны живые проверки/железо). T-040 `[ ]`.
+>
+> **Аддендум (2026-07-15, регулярная сессия): §3 эталонный full-eval на
+> release-candidate HEAD — ✅.** После рантайм-правок +27h…+30h (agui
+> `tool_call_id`, advice-gate, eval-scoring `_sig_digits`, CORS-sync) прогнан
+> свежий self-hosted full-eval на HEAD `df71baa`: **`29378924962` ЗЕЛЁНЫЙ**
+> (gate exit 0, citation 1.0 / faithfulness 0.885 / guardrail 1.0 / numeric
+> 0.923 / nodata 1.0, 37-of-41) → рантайм-правки гейт НЕ сдвинули, регресса нет;
+> эталонная запись §3 обновлена на release-HEAD. 1-я попытка `29375595788` была
+> gate-red по одному транзиентному пустому answer на `nodata_ford_net_income`
+> (`status≈succeeded`, НЕ network_error), на повторе — PASS; детали и заметка
+> владельцу (хрупкость строгого `nodata_honesty ≥ 1.0`) — в
+> [v1.0-dod.md](docs/release/v1.0-dod.md) §3-аддендуме. Release-gate инвариант
+> сверен на HEAD: ruff+mypy чисто, 359 non-slow зелёных. Docs-only. T-040
+> остаётся `[ ]` (остаток §1 чистая-VM, §4 тег/Release/branch-protection, §9
+> CPU-бенч, §10 gif — железо/владелец).
 
 **Критерии выполнения (= гейт G4, прод-состояние):**
 - [ ] Все 11 пунктов DoD §7 закрыты с доказательствами в v1.0-dod.md.
