@@ -3,9 +3,11 @@
 When the loaded corpus can't answer (financial or political facts the agent
 lacks), search the open web, tag each source by a domain-trust tier, and cache
 the findings in ``web_documents`` so a repeat query never hits the network
-again. Double lookup, mirroring ``price_enrich``'s cache-first discipline:
+again. Cache-first, mirroring ``price_enrich``'s discipline:
 
-    web_documents cache  →  scrape DuckDuckGo (HTML SERP, no API key)
+    web_documents cache  →  Tavily search API (TAVILY_API_KEY, free tier)
+                         →  scrape DuckDuckGo (no key; often bot-blocked from a
+                            server IP — that is exactly why Tavily is primary)
                          →  DeepSeek fallback (model knowledge, low trust)
 
 Errors are *observations* (``{error, retryable}``), never exceptions — the run
@@ -35,11 +37,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from common.config import load_yaml_config
+from common.config import get_settings, load_yaml_config
 from common.db import get_session_factory
 from common.errors import ConfigError, SourceUnavailableError
 from common.logging import get_logger
 
+# Primary backend: the Tavily search API (free tier) when TAVILY_API_KEY is set —
+# designed for programmatic access, so it returns reliably where server-side
+# scraping gets bot-blocked. Falls back to scraping, then DeepSeek.
+TAVILY_URL = "https://api.tavily.com/search"
 DDG_HTML_URL = "https://html.duckduckgo.com/html/"
 # A browser-like UA: DuckDuckGo serves its HTML SERP to browsers, not to bots.
 BROWSER_UA = (
@@ -180,6 +186,39 @@ def parse_ddg_html(
         if len(results) >= max_results:
             break
     # Trusted sources first so the agent (and citations) lead with them.
+    return _rank(results)
+
+
+def parse_tavily(
+    data: dict[str, Any], max_results: int, tiers: dict[str, list[str]]
+) -> list[dict[str, Any]]:
+    """Tavily /search JSON -> ranked, trust-tagged results (pure). Tavily returns
+    a real extract per result in ``content``, richer than a SERP snippet."""
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in data.get("results") or []:
+        url = str(item.get("url", ""))
+        if not url.startswith("http"):
+            continue
+        domain = _domain_of(url)
+        if not domain or domain in seen:
+            continue
+        seen.add(domain)
+        results.append(
+            {
+                "title": str(item.get("title") or "")[:TITLE_MAX],
+                "url": url,
+                "domain": domain,
+                "snippet": str(item.get("content") or "")[:SNIPPET_MAX],
+                "trust": trust_for_domain(domain, tiers),
+            }
+        )
+        if len(results) >= max_results:
+            break
+    return _rank(results)
+
+
+def _rank(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     order = {"high": 0, "medium": 1, "low": 2}
     results.sort(key=lambda r: order.get(r["trust"], 3))
     return results
@@ -290,6 +329,39 @@ async def _scrape(
     if response.status_code != 200:
         raise SourceUnavailableError(f"web search returned HTTP {response.status_code}")
     return parse_ddg_html(response.text, max_results, tiers)
+
+
+async def _tavily_search(
+    query: str, api_key: str, timeout_s: float, max_results: int, tiers: dict[str, list[str]]
+) -> list[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=timeout_s)) as client:
+        response = await client.post(
+            TAVILY_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"query": query, "max_results": max_results, "search_depth": "basic"},
+        )
+    if response.status_code != 200:
+        raise SourceUnavailableError(f"tavily returned HTTP {response.status_code}")
+    return parse_tavily(response.json(), max_results, tiers)
+
+
+async def _search(
+    query: str, timeout_s: float, max_results: int, tiers: dict[str, list[str]]
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Reliable-first backend chain: Tavily API (if TAVILY_API_KEY) → DDG scrape.
+    Returns (results, error); an empty list + error means both backends failed."""
+    api_key = get_settings().tavily_api_key
+    if api_key:
+        try:
+            results = await _tavily_search(query, api_key, timeout_s, max_results, tiers)
+            if results:
+                return results, None
+        except (SourceUnavailableError, httpx.HTTPError, ValueError):
+            pass  # fall through to the scraper
+    try:
+        return await _scrape(query, timeout_s, max_results, tiers), None
+    except (SourceUnavailableError, httpx.HTTPError) as error:
+        return [], str(error)
 
 
 async def _deepseek_fallback(query: str, router: Any) -> dict[str, Any] | None:
@@ -413,18 +485,14 @@ async def web_search(
             "cached": True,
         }
 
-    # 2) scrape the web (rate-limited)
+    # 2) live search: Tavily API (reliable) → DDG scrape fallback (rate-limited)
     limit_message = await (limiter or get_limiter()).acquire()
-    scrape_error: str | None = None
+    results: list[dict[str, Any]]
+    scrape_error: str | None
     if limit_message is not None:
-        scrape_error = limit_message
-        results: list[dict[str, Any]] = []
+        results, scrape_error = [], limit_message
     else:
-        try:
-            results = await _scrape(query, timeout_s, limit, tiers)
-        except (SourceUnavailableError, httpx.HTTPError) as error:
-            scrape_error = str(error)
-            results = []
+        results, scrape_error = await _search(query, timeout_s, limit, tiers)
 
     if results:
         try:

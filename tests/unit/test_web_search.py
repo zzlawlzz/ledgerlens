@@ -20,10 +20,17 @@ from tools.web_search.core import (
     _decode_ddg_url,
     normalize_query,
     parse_ddg_html,
+    parse_tavily,
     trust_for_domain,
     trust_summary,
     web_search,
 )
+
+
+def _no_tavily(monkeypatch: Any) -> None:
+    """Force the scrape path: no Tavily key configured."""
+    monkeypatch.setattr(core, "get_settings", lambda: SimpleNamespace(tavily_api_key=""))
+
 
 TIERS = {
     "tier1": ["gov", "sec.gov", "reuters.com"],
@@ -110,6 +117,19 @@ def test_normalize_query() -> None:
     assert normalize_query("  Apple   CEO  2025 ") == "apple ceo 2025"
 
 
+def test_parse_tavily_ranks_by_trust() -> None:
+    data = {
+        "results": [
+            {"title": "blog", "url": "https://blog.example.com/y", "content": "unverified"},
+            {"title": "Reuters", "url": "https://www.reuters.com/x", "content": "reuters extract"},
+        ]
+    }
+    results = parse_tavily(data, max_results=6, tiers=TIERS)
+    assert results[0]["domain"] == "reuters.com" and results[0]["trust"] == "high"
+    assert results[0]["snippet"] == "reuters extract"  # Tavily `content` -> snippet
+    assert results[-1]["trust"] == "low"
+
+
 # --------------------------------------------------------------- orchestration
 
 
@@ -175,7 +195,8 @@ async def test_cache_hit_skips_network() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cache_miss_scrapes_and_upserts() -> None:
+async def test_cache_miss_scrapes_and_upserts(monkeypatch: pytest.MonkeyPatch) -> None:
+    _no_tavily(monkeypatch)
     writes: list[Any] = []
     html = _sample_html([("https://www.sec.gov/x", "SEC filing", "official filing text")])
     with respx.mock:
@@ -193,7 +214,29 @@ async def test_cache_miss_scrapes_and_upserts() -> None:
 
 
 @pytest.mark.asyncio
-async def test_scrape_blocked_falls_back_to_deepseek() -> None:
+async def test_tavily_primary_when_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(core, "get_settings", lambda: SimpleNamespace(tavily_api_key="k"))
+    payload = {
+        "results": [
+            {"title": "SEC filing", "url": "https://www.sec.gov/x", "content": "official"},
+            {"title": "Reuters", "url": "https://www.reuters.com/y", "content": "reuters"},
+        ]
+    }
+    with respx.mock:
+        tav = respx.post(core.TAVILY_URL).mock(return_value=httpx.Response(200, json=payload))
+        ddg = respx.post(core.DDG_HTML_URL).mock(return_value=httpx.Response(200, text=""))
+        result = await web_search(
+            "nvidia revenue 2025", session_factory=_factory([], []), limiter=_limiter()
+        )
+    assert result["source"] == "web"
+    assert tav.call_count == 1 and ddg.call_count == 0  # Tavily used, scraper untouched
+    assert result["results"][0]["domain"] == "sec.gov"
+    assert result["trust_summary"]["level"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_scrape_blocked_falls_back_to_deepseek(monkeypatch: pytest.MonkeyPatch) -> None:
+    _no_tavily(monkeypatch)
     router = SimpleNamespace(
         chat=lambda *_a, **_k: _coro(SimpleNamespace(text="Model knowledge answer.")),
     )
