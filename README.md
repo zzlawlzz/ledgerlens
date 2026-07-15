@@ -30,7 +30,7 @@ flowchart TB
     UI["Web UI (React/TS)<br/>AG-UI event stream"]
     ORCH["Orchestrator agent<br/>LangGraph · Plan-and-Execute"]
     W1["Worker agent (ReAct)<br/>local node"]
-    W2["Worker agent (ReAct)<br/>remote node · A2A over AmneziaWG"]
+    W2["Worker agent (ReAct)<br/>optional 2nd node · A2A"]
     SQL["sql_query / schema_introspect<br/>(MCP server)"]
     RAG["rag_search<br/>(MCP server)"]
     ENR["price_enrich<br/>(MCP server)"]
@@ -100,8 +100,10 @@ frontend uses `POST /agui` (the AG-UI protocol). Self-correction scenario:
 
 - **Agent protocols:** MCP tool servers · A2A between agents (incl. across
   nodes) · AG-UI event stream to the browser.
-- **Two-node topology:** worker runs local or on a remote VPS reached over an
-  AmneziaWG mesh (T-031, gate G3) — same A2A contract either way.
+- **Pluggable worker nodes:** the orchestrator talks to workers over A2A, so a
+  second node is a single entry in `config/workers.yaml` (T-031) — the same
+  contract local or remote. The public demo runs one local worker on the
+  workstation backend.
 - **Tiered LLM routing:** cheap/local CPU inference for classify/extract/guard,
   cloud API (DeepSeek `flash`/`pro`) for planning & synthesis, provider-agnostic
   behind one interface.
@@ -116,8 +118,8 @@ frontend uses `POST /agui` (the AG-UI protocol). Self-correction scenario:
 ## Links
 
 - **Live demo:** https://ledgerlens.space/app/ *(public, rate- and budget-limited;
-  served from a self-hosted node behind a Cloudflare Tunnel — may be offline
-  during maintenance).*
+  a workstation backend exposed through a small VPS — DNS-only + Let's Encrypt,
+  no CDN proxy in the SSE path — so it may be offline during maintenance).*
 - **Grafana dashboards:** `http://localhost:3001` when self-hosting (anonymous
   Viewer) — Operations, Session drill-down, Quality.
 - **Benchmark reports:**
@@ -172,10 +174,12 @@ of scope or still hardware-gated.
 Honest, current constraints of the v1.0 line. None are silent — each is either
 tracked to a task/gate or scoped out on purpose.
 
-- **Local CPU inference is slow.** On a dev laptop multi-step questions take
-  minutes; the target is the home node (2× EPYC). The local-CPU part of the
-  [inference benchmark](benchmarks/inference/REPORT.md) and the local-model
-  choice (ADR-3) are still pending that hardware.
+- **Local model inference is deferred.** The public demo runs entirely on the
+  cloud LLM tier (DeepSeek), which is fast and reliable from the workstation's
+  wired link. The optional *local* tier — GPU (RX 6900XT via ROCm) on the
+  workstation, or CPU inference — is not wired up yet (migration Phase 2). The
+  local-CPU part of the [inference benchmark](benchmarks/inference/REPORT.md) and
+  the local-model choice (ADR-3) are still pending that setup.
 - **Russian data coverage is partial (Q-02).** MOEX ISS is live (SBER / GAZP /
   LKOH) and proves the pluggable adapter interface; e-disclosure and ГИР БО
   remain interface scaffolds, deliberately out of the v1.0 scope. MOEX ISS data
