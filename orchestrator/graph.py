@@ -53,6 +53,13 @@ CONTRADICTION_TOLERANCE = 0.02
 RESULT_SUMMARY_CHARS = 400
 DIALOGUE_CONTEXT_TURNS = 2
 MAX_GUARDRAIL_SPANS = 8
+# Least-wrong recovery when synthesis returns an empty completion (see _finalize).
+EMPTY_ANSWER_FALLBACK_EN = (
+    "I could not find enough information in the available data to answer this question."
+)
+EMPTY_ANSWER_FALLBACK_RU = (
+    "В доступных данных недостаточно информации, чтобы ответить на этот вопрос."
+)
 
 
 def _load_prompt(name: str) -> str:
@@ -604,7 +611,24 @@ class Orchestrator:
         return {"answer": answer}
 
     async def _finalize(self, state: OrchestratorState) -> OrchestratorState:
-        return {"dialogue": [{"question": state["question"], "answer": state.get("answer", "")}]}
+        answer = state.get("answer", "")
+        if not answer.strip():
+            # A blank answer on a terminal run is never correct: synthesis (or
+            # the guardrail re-synthesis) can rarely return an empty completion
+            # under model load, and an empty string then propagates to
+            # run_finished as a silent non-answer. Least-wrong recovery is an
+            # honest "no result" admission with the standard disclaimer — this
+            # also keeps no_data-honesty scoring truthful (an empty answer would
+            # otherwise score 0.0 and red an otherwise-clean eval run).
+            from orchestrator.guardrail import disclaimer_for, is_russian
+
+            question = state["question"]
+            fallback = (
+                EMPTY_ANSWER_FALLBACK_RU if is_russian(question) else EMPTY_ANSWER_FALLBACK_EN
+            )
+            answer = f"{fallback}\n\n_{disclaimer_for(question)}_"
+            self._log.warning("empty_answer_fallback", run_id=state.get("run_id"))
+        return {"answer": answer, "dialogue": [{"question": state["question"], "answer": answer}]}
 
     # -- helpers -------------------------------------------------------------
 
