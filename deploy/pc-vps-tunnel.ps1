@@ -10,5 +10,8 @@ while ($true) {
         -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes `
         -o StrictHostKeyChecking=no -o BatchMode=yes `
         -i $key $vps
-    Start-Sleep -Seconds 5
+    # Wait before reconnecting. Long enough that if the drop was unclean, the
+    # VPS sshd (ClientAliveInterval) has released the stale :18000 forward, so
+    # the next -R binds instead of fail-looping and hammering both ends.
+    Start-Sleep -Seconds 20
 }
