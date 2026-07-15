@@ -1,18 +1,36 @@
 import type { Lang } from "../i18n";
 import { useI18n } from "../i18n";
+import { IconMoon, IconSparkle, IconSun } from "../icons";
 import type { RunView } from "../types";
 
 // Canonical public repository — the demo banner links back to it (T-036 §5).
 const REPO_URL = "https://github.com/zzlawlzz/ledgerlens";
 
-export function Header({ run, mode, demo }: { run: RunView; mode?: string; demo?: boolean }) {
+export function Header({
+  run,
+  mode,
+  demo,
+  theme,
+  onToggleTheme,
+}: {
+  run: RunView;
+  mode?: string;
+  demo?: boolean;
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
+}) {
   const { lang, setLang, t } = useI18n();
   const cost = run.summary?.usage.cost_usd;
   return (
     <header className="header">
       <div className="header-titles">
-        <h1>{t("title")}</h1>
-        <span className="subtitle">{t("subtitle")}</span>
+        <span className="brand-mark" aria-hidden="true">
+          <IconSparkle />
+        </span>
+        <div className="brand-text">
+          <h1>{t("title")}</h1>
+          <span className="subtitle">{t("subtitle")}</span>
+        </div>
       </div>
       <div className="header-right">
         {cost !== undefined && (
@@ -20,10 +38,20 @@ export function Header({ run, mode, demo }: { run: RunView; mode?: string; demo?
             {t("budget_spent")}: ${cost.toFixed(4)}
           </span>
         )}
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onToggleTheme}
+          aria-label={t("theme_toggle")}
+          title={t("theme_toggle")}
+        >
+          {theme === "light" ? <IconMoon /> : <IconSun />}
+        </button>
         <div className="lang-switch" data-testid="lang-switch">
           {(["en", "ru"] as Lang[]).map((code) => (
             <button
               key={code}
+              type="button"
               className={lang === code ? "lang active" : "lang"}
               onClick={() => setLang(code)}
             >
