@@ -23,15 +23,29 @@ profiles:
     wall_clock_s_per_run: 600
     runs_per_hour_per_ip: null   # unlimited in dev
   demo:
-    max_plan_steps: 6
-    max_replans: 1
-    worker_max_iterations: 6
-    # Home node (2xEPYC) is fast; keep the tight 90s step deadline.
-    worker_deadline_s: 90
-    max_cost_usd_per_run: 0.15
-    max_tokens_per_run: 80000
-    wall_clock_s_per_run: 180
-    runs_per_hour_per_ip: 10
+    # The public demo now runs on the workstation (migration 2026-07; the EPYC
+    # node is retired). Its LLM tier is DeepSeek cloud and its RAG embeddings are
+    # CPU-bound (fastembed) on this box — heavier and slower than the old 2xEPYC
+    # home node, so a multi-company / 10-K-narrative query needs real head-room to
+    # finish instead of tripping budget_exceeded mid-step. These limits are sized
+    # for that, and are fully decoupled from the eval gate (eval runs under `dev`).
+    max_plan_steps: 8
+    max_replans: 2
+    worker_max_iterations: 12
+    # A narrative_rag step (fastembed embed + hybrid search + rerank + synthesis)
+    # over a 10-K is CPU-bound here; 90s cut it off mid-retrieval. 240s lets it
+    # complete. The frontend stall watchdog (120s between events) is unaffected —
+    # the ReAct loop emits tool/thought events well inside that window.
+    worker_deadline_s: 240
+    max_cost_usd_per_run: 0.50
+    max_tokens_per_run: 250000
+    wall_clock_s_per_run: 600
+    # Per-IP rate limiting needs a trustworthy client IP. Behind the old
+    # Cloudflare tunnel that was CF-Connecting-IP; after the move to a DNS-only
+    # VPS + SSH tunnel every request reaches the app from the tunnel's localhost,
+    # so per-IP counting would collapse to a single shared bucket. Disabled here;
+    # abuse is bounded by max_concurrent_runs + the daily DAILY_COST_CAP_USD cap.
+    runs_per_hour_per_ip: null
     # Public-demo admission limits (T-036 §1, CONTRACTS §13). Enforced in-process
     # by orchestrator.demo_limits; the system-wide daily cost cap comes from
     # DAILY_COST_CAP_USD (env). Only active when BUDGET_PROFILE=demo.
