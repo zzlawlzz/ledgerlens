@@ -55,6 +55,28 @@ async def test_select_into_and_locks_rejected() -> None:
     assert "error" in lock and "lock" in lock["error"].lower()
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH t AS (INSERT INTO companies (source) VALUES ('x') RETURNING *) SELECT * FROM t",
+        "WITH t AS (UPDATE companies SET name = 'x' RETURNING *) SELECT * FROM t",
+        "WITH t AS (DELETE FROM financial_facts RETURNING *) SELECT * FROM t",
+    ],
+)
+async def test_data_modifying_cte_rejected_before_execution(sql: str) -> None:
+    """A writable CTE must not slip past the parse barrier onto app_ro."""
+    observation = await sql_query(sql, session_factory=_ExplodingFactory())  # type: ignore[arg-type]
+    assert "error" in observation and "data-modifying" in observation["error"]
+    assert "read-only" in observation["hint"]
+    assert "schema_excerpt" in observation
+
+
+def test_benign_cte_still_allowed() -> None:
+    """A read-only CTE (no DML) is rewritten and allowed."""
+    validated = _validate_and_rewrite("WITH t AS (SELECT 1 AS x) SELECT * FROM t", row_limit=50)
+    assert isinstance(validated, tuple)
+
+
 async def test_parse_error_gets_teaching_hint() -> None:
     observation = await sql_query(
         "SELEC ticker FRM latest_facts",

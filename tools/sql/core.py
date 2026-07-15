@@ -124,6 +124,18 @@ def _validate_and_rewrite(sql: str, row_limit: int) -> tuple[str, int] | dict[st
             f"only SELECT/WITH queries are allowed, got {statement.key.upper()}",
             "This tool is read-only. Rewrite the request as a SELECT over latest_facts.",
         )
+    # A top-level SELECT/WITH can still smuggle writes through a data-modifying
+    # CTE, e.g. ``WITH t AS (INSERT ... RETURNING *) SELECT * FROM t``. The
+    # ``app_ro`` role blocks these at execution, but reject them here too so the
+    # parse barrier holds and the agent gets a self-correcting hint rather than
+    # an opaque permission-denied.
+    dml = statement.find(exp.Insert, exp.Update, exp.Delete, exp.Merge)
+    if dml is not None:
+        return _error_observation(
+            f"data-modifying statements are not allowed ({dml.key.upper()} found)",
+            "This tool is read-only, including inside CTEs. Rewrite the request as "
+            "a plain SELECT over latest_facts.",
+        )
     select = statement
     if isinstance(select, exp.Select) and select.args.get("into"):
         return _error_observation(
