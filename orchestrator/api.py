@@ -376,9 +376,16 @@ def _sse_headers(run_id: object) -> dict[str, str]:
     itself (honoured by nginx and other reverse proxies), so streaming works
     even without the location-level nginx tuning — portable proxy-independent
     buffering-off required by T-036 §4.
+
+    ``no-transform`` is the CDN directive that matters once the frontend is on a
+    different origin behind Cloudflare (split-origin, T-040): a browser sends
+    ``Accept-Encoding: gzip, br``, and to compress a response Cloudflare buffers
+    it — which silently kills SSE (curl, sending no Accept-Encoding, streams
+    fine; the browser gets only the first event then stalls). ``no-transform``
+    tells Cloudflare not to compress/transform, so it streams each event through.
     """
     return {
-        "Cache-Control": "no-cache",
+        "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
         "X-Run-Id": str(run_id),
     }

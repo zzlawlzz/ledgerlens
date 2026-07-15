@@ -65,15 +65,43 @@ or embeddings anyway.
   for now (dead CPU-ollama); DeepSeek-only run = 22s clean.
 - **Phase 2 (GPU LLM): deferred** — DeepSeek is reliable from here, so not urgent.
 - **Phase 3 (VPS door): done.** `deploy/pc-vps-tunnel.ps1` holds an SSH -R from the
-  PC (:8000) to the VPS (:18000); VPS nginx reverse-proxies :80 and :443 (self-
-  signed origin cert — CF zone is Full, accepts it) to it. CORS_ALLOW_ORIGINS set
-  on the PC. Persistence: Startup-folder shim + VPS sshd ClientAliveInterval so
-  stale forwards clear.
-- **Phase 4 (cutover): done.** `api.ledgerlens.space` (CF-proxied → VPS) is the API;
-  the Pages frontend (site.yml VITE_API_BASE_URL) points at it. Verified end-to-end:
-  browser → Pages → CF → VPS:443 → tunnel → workstation → **full run in 18s**, correct
-  answer, 0 errors (vs 60–150s with breaks on EPYC).
-- **Phase 5 (retire EPYC + docs): pending.**
+  PC (:8000) to the VPS (:18000); VPS nginx reverse-proxies :443 → the tunnel over
+  HTTP/1.1, with a **Let's Encrypt certificate** for `api.ledgerlens.space`
+  (auto-renewing; obtained by webroot HTTP-01). CORS_ALLOW_ORIGINS set on the PC.
+  Persistence: Startup-folder shim + VPS sshd ClientAliveInterval so stale forwards
+  clear.
+- **Phase 4 (cutover): done.** `api.ledgerlens.space` is **DNS-only (not CF-proxied)**
+  → it resolves straight to the VPS, and the browser talks directly to VPS nginx.
+  The Pages frontend (`site.yml` `VITE_API_BASE_URL`) points at it, unchanged.
+  Verified end-to-end in a real browser: Pages → VPS:443 (LE, HTTP/1.1) → SSH tunnel
+  → workstation → full multi-step run (Apple vs MSFT + risks), correct answer,
+  clean SSE with live step/tool progress, no errors.
+  - **Why DNS-only instead of behind Cloudflare — the SSE saga (2026-07-15).** The
+    demo first shipped CF-proxied. The browser hung on "Строим план" / threw
+    `TypeError: network error` while curl ran the identical request fine — two
+    distinct Cloudflare-proxy defects, both invisible to curl:
+    1. **h2 + compression buffering.** A browser sends `Accept-Encoding: gzip, br`
+       (curl doesn't); to compress the response CF buffered the whole SSE instead
+       of streaming it, so the client got only the first event then stalled.
+       Mitigated by `Cache-Control: no-transform` (kept as a defensive header in
+       `orchestrator/api.py::_sse_headers`).
+    2. **HTTP/3 (QUIC).** Browsers adopt h3 via the `alt-svc` header after the
+       first request; h3 through CF broke the SSE outright, and browsers cache that
+       `alt-svc` for 24 h (so disabling h3 zone-wide still left already-poisoned
+       tabs stuck).
+    Rather than keep fighting CF's edge, the API was taken **out from behind the
+    proxy**: DNS-only + a Let's Encrypt cert on the VPS + HTTP/1.1. The browser now
+    reaches VPS nginx directly, which streams SSE correctly (`proxy_buffering off`),
+    and the whole class of CF-SSE problems is gone. Lesson: curl is a poor proxy
+    for a browser when debugging SSE — it omits `Accept-Encoding` and never
+    negotiates h2/h3, so it silently dodges the exact defects that break browsers.
+  - **AG-UI terminal-event bug fixed alongside** (`orchestrator/agui.py`): a step
+    aborted mid-flight (budget/deadline exceeded) left a tool call open, so
+    `RUN_FINISHED` was rejected with "Cannot send 'RUN_FINISHED' while tool calls
+    are still active" — a red banner over an otherwise-usable partial answer. The
+    adapter now closes every dangling tool call before the terminal event.
+- **Phase 5 (retire EPYC + docs): in progress** — ARCHITECTURE/README/site being
+  reworked to the new topology; EPYC artifacts retired.
 
 ## Retires
 
