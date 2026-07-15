@@ -143,6 +143,47 @@ async def test_simple_question_is_single_step_without_planner() -> None:
 
 
 @pytest.mark.asyncio
+async def test_empty_synthesis_yields_honest_fallback_not_blank() -> None:
+    # A synthesis completion can rarely come back empty under model load. A blank
+    # answer must never reach run_finished on a succeeded run: _finalize replaces
+    # it with an honest "no result" admission + disclaimer. (Regression for the
+    # no_data eval flake where an empty answer scored nodata_honesty=0.0 and
+    # red-gated a clean full-eval — docs/release/v1.0-dod.md §3 addendum.)
+    class EmptySynthRouter(FakeRouter):
+        async def chat(self, task_class: str, messages: Any, **_: Any) -> Any:
+            self.synth_calls += 1
+            return SimpleNamespace(text="")  # model returned nothing
+
+    router = EmptySynthRouter(classification=Classification(complexity="simple"))
+    worker = FakeWorker([_result("succeeded", "no matching facts")])
+    orchestrator = _make(router, worker)
+    state = await orchestrator.run(
+        question="What was Ford's net income in FY2024?", mode="us", run_id="re"
+    )
+    assert state["answer"].strip()  # never blank
+    assert "could not find" in state["answer"].lower()  # honest gap admission
+    assert "not investment advice" in state["answer"]  # disclaimer still present
+    assert state["dialogue"][-1]["answer"] == state["answer"]  # emitted answer matches
+
+
+@pytest.mark.asyncio
+async def test_empty_synthesis_fallback_is_localized_for_russian() -> None:
+    class EmptySynthRouter(FakeRouter):
+        async def chat(self, task_class: str, messages: Any, **_: Any) -> Any:
+            self.synth_calls += 1
+            return SimpleNamespace(text="   ")  # whitespace-only counts as empty
+
+    router = EmptySynthRouter(classification=Classification(complexity="simple"))
+    worker = FakeWorker([_result("succeeded", "нет данных")])
+    orchestrator = _make(router, worker)
+    state = await orchestrator.run(
+        question="Какая была чистая прибыль Ford за 2024 год?", mode="ru", run_id="rr"
+    )
+    assert "недостаточно информации" in state["answer"]  # RU fallback
+    assert "инвестиционная рекомендация" in state["answer"]  # RU disclaimer
+
+
+@pytest.mark.asyncio
 async def test_no_data_triggers_exactly_one_replan_with_changed_plan() -> None:
     router = FakeRouter(
         plans=[

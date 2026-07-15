@@ -539,7 +539,21 @@ class Orchestrator:
                 ),
             ],
         )
-        return {"answer": response.text, "partial": partial}
+        # An empty (or whitespace-only) completion can rarely come back under
+        # model load. Normalize it to an honest "no result" admission here, at
+        # the source, so the guardrail appends the disclaimer as usual and no
+        # blank/near-blank answer reaches run_finished (see also _finalize).
+        answer = response.text.strip()
+        if not answer:
+            from orchestrator.guardrail import is_russian
+
+            answer = (
+                EMPTY_ANSWER_FALLBACK_RU
+                if is_russian(state["question"])
+                else EMPTY_ANSWER_FALLBACK_EN
+            )
+            self._log.warning("empty_synthesis_fallback", run_id=state.get("run_id"))
+        return {"answer": answer, "partial": partial}
 
     async def _guardrail(self, state: OrchestratorState) -> OrchestratorState:
         """Non-advice guardrail (T-022; CONTRACTS §12): check -> one
