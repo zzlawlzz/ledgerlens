@@ -62,6 +62,13 @@ EMPTY_ANSWER_FALLBACK_RU = (
 )
 
 
+def _empty_answer_fallback(question: str) -> str:
+    """Least-wrong recovery text when a synthesis completion comes back empty."""
+    from orchestrator.guardrail import is_russian
+
+    return EMPTY_ANSWER_FALLBACK_RU if is_russian(question) else EMPTY_ANSWER_FALLBACK_EN
+
+
 def _load_prompt(name: str) -> str:
     text_ = (_PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
     if text_.startswith("---"):
@@ -545,13 +552,7 @@ class Orchestrator:
         # blank/near-blank answer reaches run_finished (see also _finalize).
         answer = response.text.strip()
         if not answer:
-            from orchestrator.guardrail import is_russian
-
-            answer = (
-                EMPTY_ANSWER_FALLBACK_RU
-                if is_russian(state["question"])
-                else EMPTY_ANSWER_FALLBACK_EN
-            )
+            answer = _empty_answer_fallback(state["question"])
             self._log.warning("empty_synthesis_fallback", run_id=state.get("run_id"))
         return {"answer": answer, "partial": partial}
 
@@ -588,7 +589,15 @@ class Orchestrator:
                     ),
                 ],
             )
-            answer = response.text
+            # Like _synthesize, the re-synthesis completion can rarely come back
+            # empty/whitespace-only under model load. Normalize it here so no
+            # near-blank answer (just the appended disclaimer) reaches
+            # run_finished — _finalize's strip() backstop cannot catch that case
+            # once the disclaimer makes the string non-empty.
+            answer = response.text.strip()
+            if not answer:
+                answer = _empty_answer_fallback(question)
+                self._log.warning("empty_resynthesis_fallback", run_id=state.get("run_id"))
             # Second pass is regex-only: deterministic and free; a stubborn
             # draft gets the template refusal built from collected facts.
             if find_advice_spans(answer):
@@ -634,13 +643,10 @@ class Orchestrator:
             # honest "no result" admission with the standard disclaimer — this
             # also keeps no_data-honesty scoring truthful (an empty answer would
             # otherwise score 0.0 and red an otherwise-clean eval run).
-            from orchestrator.guardrail import disclaimer_for, is_russian
+            from orchestrator.guardrail import disclaimer_for
 
             question = state["question"]
-            fallback = (
-                EMPTY_ANSWER_FALLBACK_RU if is_russian(question) else EMPTY_ANSWER_FALLBACK_EN
-            )
-            answer = f"{fallback}\n\n_{disclaimer_for(question)}_"
+            answer = f"{_empty_answer_fallback(question)}\n\n_{disclaimer_for(question)}_"
             self._log.warning("empty_answer_fallback", run_id=state.get("run_id"))
         return {"answer": answer, "dialogue": [{"question": state["question"], "answer": answer}]}
 

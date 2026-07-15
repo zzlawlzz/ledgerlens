@@ -184,6 +184,42 @@ async def test_empty_synthesis_fallback_is_localized_for_russian() -> None:
 
 
 @pytest.mark.asyncio
+async def test_empty_guardrail_resynthesis_yields_honest_fallback_not_blank() -> None:
+    # The guardrail advice re-synthesis can also come back empty/whitespace-only
+    # under model load — the same failure as _synthesize but on a different code
+    # path. Without normalization the only content reaching run_finished is the
+    # appended disclaimer (a near-blank answer); _finalize's strip() backstop
+    # cannot catch that once the disclaimer makes the string non-empty. The
+    # re-synthesis must fall back to the same honest admission. (Symmetric to the
+    # _synthesize empty-answer fix, 005b96e.)
+    from orchestrator.guardrail import GuardVerdict
+
+    class AdviceThenEmptyRouter(FakeRouter):
+        async def chat_structured(self, task_class: str, messages: Any, schema: Any) -> Any:
+            if schema is GuardVerdict:  # force the advice re-synthesis branch
+                return GuardVerdict(advice=True, spans=["you should buy"])
+            return await super().chat_structured(task_class, messages, schema)
+
+        async def chat(self, task_class: str, messages: Any, **_: Any) -> Any:
+            self.synth_calls += 1
+            if self.synth_calls == 1:
+                return SimpleNamespace(text="You should buy the stock now.")
+            return SimpleNamespace(text="   ")  # empty re-synthesis under load
+
+    router = AdviceThenEmptyRouter(classification=Classification(complexity="simple"))
+    worker = FakeWorker([_result("succeeded", "AAPL revenue was $391B")])
+    orchestrator = _make(router, worker)
+    state = await orchestrator.run(
+        question="What was AAPL revenue in FY2024?", mode="us", run_id="rg"
+    )
+    assert router.synth_calls == 2  # first synthesis + one re-synthesis
+    assert state["answer"].strip()  # never near-blank
+    assert "could not find" in state["answer"].lower()  # honest gap admission
+    assert "not investment advice" in state["answer"]  # disclaimer still present
+    assert state["dialogue"][-1]["answer"] == state["answer"]
+
+
+@pytest.mark.asyncio
 async def test_no_data_triggers_exactly_one_replan_with_changed_plan() -> None:
     router = FakeRouter(
         plans=[
