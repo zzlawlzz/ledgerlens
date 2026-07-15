@@ -613,6 +613,41 @@ body {
 .citation-card .section {
   color: var(--muted);
 }
+.citation-card.web {
+  border-left: 3px solid var(--accent-2);
+}
+.cite-title {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.trust-badge {
+  align-self: flex-start;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+.trust-high {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+.trust-medium {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+.trust-low {
+  color: var(--err);
+  background: var(--err-soft);
+}
 
 /* ---------- ask row ---------- */
 .ask-row {

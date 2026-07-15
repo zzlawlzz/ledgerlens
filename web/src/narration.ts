@@ -36,6 +36,13 @@ export function toolLabelKey(name: string): DictKey {
   return TOOL_LABEL[toolKind(name)];
 }
 
+/** i18n key for a web source's trust tier (high/medium/low). */
+export function trustLabelKey(trust: string): DictKey {
+  if (trust === "high") return "trust_high";
+  if (trust === "medium") return "trust_medium";
+  return "trust_low";
+}
+
 const TERMINAL = new Set(["done", "succeeded", "failed", "no_data"]);
 
 /** Steps finished / total, plus the 1-based index of the step in flight. */

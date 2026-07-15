@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { IconExternal, IconRetry, IconSend, IconSparkle, IconUser } from "../icons";
 import { useI18n } from "../i18n";
-import { narrate, stepProgress } from "../narration";
+import { narrate, stepProgress, trustLabelKey } from "../narration";
 import type { RunView } from "../types";
 
 export function Chat({
@@ -204,26 +204,42 @@ function CitationCards({ run }: { run: RunView }) {
     <div className="citations" data-testid="citations">
       <h3>{t("citations_title")}</h3>
       <div className="citation-cards">
-        {unique.map((citation, index) => (
-          <a
-            key={index}
-            className="citation-card"
-            data-testid="citation-card"
-            href={citation.source_url ?? "#"}
-            target="_blank"
-            rel="noreferrer"
-            title={t("open_source")}
-          >
-            <span className="cite-head">
-              <strong>
-                {citation.ticker} {citation.form_type}
-              </strong>
-              <IconExternal className="cite-ext" />
-            </span>
-            <span>{citation.period}</span>
-            <span className="section">{citation.section}</span>
-          </a>
-        ))}
+        {unique.map((citation, index) => {
+          const isWeb = citation.source_type === "web";
+          return (
+            <a
+              key={index}
+              className={isWeb ? "citation-card web" : "citation-card"}
+              data-testid="citation-card"
+              href={citation.source_url ?? "#"}
+              target="_blank"
+              rel="noreferrer"
+              title={t("open_source")}
+            >
+              <span className="cite-head">
+                <strong>
+                  {isWeb ? citation.section : `${citation.ticker} ${citation.form_type}`}
+                </strong>
+                <IconExternal className="cite-ext" />
+              </span>
+              {isWeb ? (
+                <>
+                  {citation.title && <span className="cite-title">{citation.title}</span>}
+                  {citation.trust && (
+                    <span className={`trust-badge trust-${citation.trust}`}>
+                      {t(trustLabelKey(citation.trust))}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span>{citation.period}</span>
+                  <span className="section">{citation.section}</span>
+                </>
+              )}
+            </a>
+          );
+        })}
       </div>
     </div>
   );

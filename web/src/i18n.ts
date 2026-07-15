@@ -71,6 +71,10 @@ const DICT = {
     theme_toggle: "Toggle light / dark theme",
     args_label: "Arguments",
     steps_label: "steps",
+    trust_high: "trusted",
+    trust_medium: "cross-checked",
+    trust_low: "unverified",
+    source_web: "web",
   },
   ru: {
     title: "LedgerLens",
@@ -138,6 +142,10 @@ const DICT = {
     theme_toggle: "Переключить светлую / тёмную тему",
     args_label: "Аргументы",
     steps_label: "шагов",
+    trust_high: "надёжный",
+    trust_medium: "перепроверен",
+    trust_low: "не проверен",
+    source_web: "веб",
   },
 } as const;
 

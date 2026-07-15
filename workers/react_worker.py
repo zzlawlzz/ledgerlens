@@ -68,6 +68,7 @@ _MCP_SERVER_TOOLS = {
     "sql": ("sql_query", "schema_introspect"),
     "rag": ("rag_search",),
     "enrich": ("price_enrich",),
+    "web_search": ("web_search",),
 }
 
 
@@ -155,11 +156,17 @@ def _default_tool_impls() -> dict[str, ToolImpl]:
 
         return await price_enrich(ticker, date_from, date_to)
 
+    async def _web_search(query: str) -> dict[str, Any]:
+        from tools.web_search.core import web_search
+
+        return await web_search(query)
+
     return {
         "sql_query": sql_query,
         "schema_introspect": _schema_introspect,
         "rag_search": _rag_search,
         "price_enrich": _price_enrich,
+        "web_search": _web_search,
     }
 
 
@@ -228,6 +235,13 @@ def _build_tools(
                         f"{citation.get('period')}, {citation.get('section')}]"
                     )
                     raw_chunks.append(f"{tag}\n{chunk.get('text', '')}")
+        if tool_name == "web_search" and not is_error and isinstance(result, dict):
+            for citation in result.get("citations", []):
+                evidence.citations.append(dict(citation))
+                # Tag matches _CITATION_MARKER so a web fact survives grounding.
+                raw_chunks.append(
+                    f"[web: {citation.get('section')}]\n{citation.get('snippet', '')}"
+                )
         return payload
 
     if "sql_query" in task.allowed_tools and "sql_query" in impls:
@@ -310,6 +324,27 @@ def _build_tools(
                 ),
             )
         )
+
+    if "web_search" in task.allowed_tools and "web_search" in impls:
+
+        async def _web_search(query: str) -> str:
+            """Search the open web for facts the loaded corpus lacks."""
+            return await _traced_call("web_search", {"query": query})
+
+        tools.append(
+            StructuredTool.from_function(
+                coroutine=_web_search,
+                name="web_search",
+                description=(
+                    "Search the open web ONLY when the loaded corpus (SQL/RAG) "
+                    "cannot answer — recent or political facts, figures not in "
+                    "EDGAR. Returns {results, citations, trust_summary, source}. "
+                    "Prefer high-trust sources; if trust_summary.level is low, say "
+                    "so honestly. Cite each web-sourced fact inline as "
+                    "[web: <domain>]. Findings are context to cite — never advice."
+                ),
+            )
+        )
     return tools
 
 
@@ -334,7 +369,8 @@ def _render_task(task: WorkerTask) -> str:
     return "\n".join(parts)
 
 
-_CITATION_MARKER = re.compile(r"\[[A-Z]{1,6}\s+10-[KQ][^\]]{0,80}\]")
+# Filing citations [AAPL 10-K 2025, risk_factors] and web citations [web: reuters.com].
+_CITATION_MARKER = re.compile(r"\[(?:[A-Z]{1,6}\s+10-[KQ][^\]]{0,80}|web:[^\]]{0,80})\]")
 _GAP_PHRASES = re.compile(
     r"(?i)\b(no data|not (available|loaded|present|found|disclosed|in the)|"
     r"нет данных|не (загружен|найден|раскрыт))"

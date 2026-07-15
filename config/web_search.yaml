@@ -1,0 +1,42 @@
+# web_search tool (T-043). Domain-trust tiers + cache/rate discipline.
+# Matched as domain suffixes: "gov" matches sec.gov; "reuters.com" matches
+# www.reuters.com. Everything not listed is "low" trust (needs cross-checking).
+
+trust:
+  # tier-1 = trusted primary / official / wire — a hit here => "high" confidence.
+  tier1:
+    - gov # sec.gov, *.gov (regulators, statistics offices)
+    - sec.gov
+    - europa.eu
+    - imf.org
+    - worldbank.org
+    - reuters.com
+    - bloomberg.com
+    - ft.com
+    - wsj.com
+    - apnews.com
+    - nasdaq.com
+    - investor.gov
+  # tier-2 = reputable secondary — "medium" on its own; combine for cross-check.
+  tier2:
+    - wikipedia.org
+    - cnbc.com
+    - forbes.com
+    - marketwatch.com
+    - investopedia.com
+    - businessinsider.com
+    - nytimes.com
+    - theguardian.com
+    - bbc.com
+    - bbc.co.uk
+    - economist.com
+
+# Durable cache freshness: a query answered within this many days is served from
+# web_documents without hitting the network.
+ttl_days: 14
+
+# Per-search shape + provider discipline (a public demo must not hammer DDG).
+max_results: 6
+timeout_s: 12.0
+min_interval_s: 2.0
+daily_request_limit: 60

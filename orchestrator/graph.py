@@ -42,8 +42,11 @@ from orchestrator.worker_client import WorkerClient
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 SKILL_TOOLS: dict[str, list[str]] = {
-    "financial_sql_analysis": ["sql_query", "schema_introspect"],
-    "narrative_rag_analysis": ["rag_search"],
+    # web_search is a *fallback* for the two corpus skills: when SQL/RAG can't
+    # answer (a recent or political fact, a company not in EDGAR), the worker may
+    # reach the open web before conceding NO_DATA (T-043, prompt rule 3).
+    "financial_sql_analysis": ["sql_query", "schema_introspect", "web_search"],
+    "narrative_rag_analysis": ["rag_search", "web_search"],
     # T-033: EOD price context; sql_query rides along for company/date lookups.
     "price_history_analysis": ["price_enrich", "sql_query"],
 }

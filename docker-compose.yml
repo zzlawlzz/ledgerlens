@@ -213,6 +213,28 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # web_search MCP (T-043): trusted web lookup with a durable web_documents
+  # cache; scrapes DuckDuckGo (no API key), DeepSeek fallback. Needs Postgres
+  # (cache) + DEEPSEEK_API_KEY (from .env) for the fallback.
+  mcp-websearch:
+    build: .
+    entrypoint: ["python", "-m", "tools.web_search.server"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+    ports:
+      - "8768:8768"  # host access for dev tests / MCP inspector
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/mcp_ping.py", "http://127.0.0.1:8768/mcp"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
   # ReAct worker as a separate A2A service (T-021): the orchestrator talks to
   # it only over the A2A protocol; a second node (T-031) is one more entry in
   # config/workers.yaml, no code changes.
@@ -230,6 +252,7 @@ services:
       MCP_SQL_URL: http://mcp-sql:8765/mcp
       MCP_RAG_URL: http://mcp-rag:8766/mcp
       MCP_ENRICH_URL: http://mcp-enrich:8767/mcp
+      MCP_WEBSEARCH_URL: http://mcp-websearch:8768/mcp
     ports:
       - "8081:8081"  # host access for dev tests (401/card checks)
     volumes:

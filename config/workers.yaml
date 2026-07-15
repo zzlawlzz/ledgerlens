@@ -14,3 +14,4 @@ tool_endpoints:
   sql: ${MCP_SQL_URL:local}
   rag: ${MCP_RAG_URL:local}
   enrich: ${MCP_ENRICH_URL:local}
+  web_search: ${MCP_WEBSEARCH_URL:local}

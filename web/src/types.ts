@@ -24,6 +24,9 @@ export interface Citation {
   section?: string;
   source_url?: string;
   snippet?: string;
+  title?: string;
+  trust?: string; // web sources: high | medium | low
+  source_type?: string; // "web" for web_search citations
 }
 
 export interface KeyValue {
