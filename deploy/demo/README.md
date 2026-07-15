@@ -67,6 +67,13 @@ from the running stack. The CI artifact is the source of truth for `make seed`; 
 
 ## Go live (§4 — Cloudflare Tunnel)
 
+> **Note — this repo's own public demo no longer uses the Cloudflare Tunnel path
+> below.** It migrated to a workstation backend behind a small VPS door
+> (reverse-tunnel + nginx, DNS-only + Let's Encrypt, no CDN proxy in the SSE
+> path) because Cloudflare's proxy truncated SSE responses in-browser. See
+> [migration notes](../../docs/migration-workstation.md). The Cloudflare Tunnel
+> runbook here remains a valid generic option for self-hosting a public demo.
+
 The public entry point is a `cloudflared` connector in the demo overlay. It dials
 **out** to Cloudflare (no inbound port on the host), and the tunnel's dashboard
 ingress routes only the demo hostname → `web:80`. Nothing else has a public route;
@@ -90,4 +97,6 @@ the host firewall (ufw) denies all inbound (see SECURITY.md).
 
 Fallback without a domain: direct entry on the white IP with Caddy TLS.
 
-The current demo domain is **ledgerlens.space** (`app.ledgerlens.space`).
+The current public demo is served at **`https://ledgerlens.space/app/`** (frontend
+on GitHub Pages) with the API at **`https://api.ledgerlens.space`** (VPS door →
+tunnel → workstation backend). The old `app.ledgerlens.space` host is retired.

@@ -23,8 +23,9 @@ Polish & packaging (Phase 4). In progress.
   (rate/size/concurrency/daily-cost) under `BUDGET_PROFILE=demo`; security pass
   (non-root, docs-off, nginx security headers, CORS deny-by-default);
   `make seed`/`make snapshot` to restore the demo corpus without EDGAR; public
-  UI banner; live public demo at https://app.ledgerlens.space behind a
-  Cloudflare Tunnel.
+  UI banner; live public demo at https://ledgerlens.space/app/ — a workstation
+  backend exposed through a small VPS door (DNS-only + Let's Encrypt, no CDN
+  proxy in the SSE path). See [migration notes](docs/migration-workstation.md).
 - **Benchmarks** (T-037): inference CPU-vs-API harness with live DeepSeek numbers
   ([report](benchmarks/inference/REPORT.md)) and vector-store pgvector-vs-Qdrant
   benchmark ([report](benchmarks/vector/REPORT.md)).
