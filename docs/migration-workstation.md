@@ -56,6 +56,25 @@ or embeddings anyway.
    update ARCHITECTURE.md / README / deploy runbooks to the new topology; retire
    the EPYC-specific artifacts.
 
+## Status (2026-07-15) — demo LIVE on the new stack
+
+- **Phase 1 (backend on workstation): done.** Docker disk moved to E:; the stack
+  runs here; corpus survived the move (4546 facts, no re-ingest); DeepSeek is
+  clean and fast from this PC's wired link (5/5 ~1s) — the whole EPYC egress class
+  of failures was that node's line, not the region. Local `local` tier disabled
+  for now (dead CPU-ollama); DeepSeek-only run = 22s clean.
+- **Phase 2 (GPU LLM): deferred** — DeepSeek is reliable from here, so not urgent.
+- **Phase 3 (VPS door): done.** `deploy/pc-vps-tunnel.ps1` holds an SSH -R from the
+  PC (:8000) to the VPS (:18000); VPS nginx reverse-proxies :80 and :443 (self-
+  signed origin cert — CF zone is Full, accepts it) to it. CORS_ALLOW_ORIGINS set
+  on the PC. Persistence: Startup-folder shim + VPS sshd ClientAliveInterval so
+  stale forwards clear.
+- **Phase 4 (cutover): done.** `api.ledgerlens.space` (CF-proxied → VPS) is the API;
+  the Pages frontend (site.yml VITE_API_BASE_URL) points at it. Verified end-to-end:
+  browser → Pages → CF → VPS:443 → tunnel → workstation → **full run in 18s**, correct
+  answer, 0 errors (vs 60–150s with breaks on EPYC).
+- **Phase 5 (retire EPYC + docs): pending.**
+
 ## Retires
 
 EPYC demo stack, EPYC self-hosted GitHub runner, the AmneziaWG mesh (EPYC↔VPS),
