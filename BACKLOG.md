@@ -889,6 +889,19 @@
 > сверен на HEAD: ruff+mypy чисто, 359 non-slow зелёных. Docs-only. T-040
 > остаётся `[ ]` (остаток §1 чистая-VM, §4 тег/Release/branch-protection, §9
 > CPU-бенч, §10 gif — железо/владелец).
+>
+> **Аддендум (2026-07-15, регулярная сессия): empty-answer робастность-фикс
+> ПРИЗЕМЛЁН и ВАЛИДИРОВАН НА ГЕЙТЕ.** Транзиент из §3 (`nodata_ford_net_income`
+> → пустой answer → `nodata_honesty` red) закрыт кодом в `orchestrator/graph.py`
+> (`005b96e`: `_synthesize`+`_finalize` нормализуют пустой/whitespace синтез в
+> честное «нет данных»+дисклеймер). **Валидация:** свежий self-hosted full-eval
+> **`29390701909` (profile=full, release-HEAD `af5c6d1` с фиксом) — ЗЕЛЁНЫЙ**
+> (gate exit 0, citation 1.0 / faithfulness 0.862 / guardrail 1.0 / numeric
+> 0.923 / nodata **1.0**, 37-of-41), причём **`nodata_ford_net_income` теперь
+> PASS (74.4s, непустой)** — тот самый флейк-кейс. Второй подряд зелёный
+> full-eval на release-HEAD и первый с включённым фиксом → эталонная §3-запись
+> с фиксом = `29390701909`; DoD §3-аддендум обновлён. Baseline на HEAD: 361
+> non-slow зелёных. Docs-only. T-040 остаётся `[ ]`.
 
 **Критерии выполнения (= гейт G4, прод-состояние):**
 - [ ] Все 11 пунктов DoD §7 закрыты с доказательствами в v1.0-dod.md.
