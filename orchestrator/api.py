@@ -31,6 +31,7 @@ from common.logging import bind_run_context, configure_logging, get_logger, rese
 from common.tracing import Subscriber, TraceBus, TraceEvent, make_log_subscriber
 from orchestrator.agui import SSE_HEARTBEAT, extract_question, stream_agui_run
 from orchestrator.demo_limits import DemoLimiter, DemoLimitError, build_demo_limiter
+from orchestrator.demo_notify import notify_run_finished
 from orchestrator.graph import Orchestrator
 from orchestrator.monitor_api import monitor_router
 from orchestrator.persistence import (
@@ -327,7 +328,26 @@ async def _execute_run(run_id: uuid.UUID, request: ChatRequest) -> None:
         # (no-op off the demo profile). Runs after finalize so cost is known.
         limiter = get_demo_limiter()
         limiter.release_slot()
-        limiter.record_cost(float(usage.get("cost_usd", 0.0) or 0.0))
+        run_cost = float(usage.get("cost_usd", 0.0) or 0.0)
+        limiter.record_cost(run_cost)
+        # Per-request owner notification (activity + spend). No-op off the demo
+        # profile / without Telegram, and wrapped so it can never break the run.
+        daily_spent, daily_cap = limiter.daily_report()
+        try:
+            await notify_run_finished(
+                question=request.question,
+                mode=request.mode,
+                status=status,
+                partial=bool(final_state is not None and final_state.get("partial")),
+                cost_usd=run_cost,
+                tokens_in=int(usage.get("tokens_in", 0) or 0),
+                tokens_out=int(usage.get("tokens_out", 0) or 0),
+                latency_ms=latency_ms,
+                daily_spent=daily_spent,
+                daily_cap=daily_cap,
+            )
+        except Exception as notify_error:  # noqa: BLE001 — never fail a run on notify
+            get_logger(node="orchestrator").warning("demo_notify_failed", error=str(notify_error))
         if error is not None or final_state is None:
             await TRACE_BUS.publish("run_error", {"error": error or "no state"}, run_id=str(run_id))
         else:

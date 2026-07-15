@@ -235,6 +235,21 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # SSH-SOCKS egress for demo Telegram notifications (T-044). Runs ONLY under the
+  # `demo` compose profile (set COMPOSE_PROFILES=demo in .env). It keeps a SOCKS5
+  # proxy on :1080 tunnelled through the FI VPS, so the app can reach
+  # api.telegram.org (blocked from RU IPs) as socks5h://tg-egress:1080. Nothing
+  # is installed or changed on the VPS — outbound `ssh -D` only. Needs TG_SSH_KEY
+  # (host path to the worker-node SSH key) and FI_SSH_TARGET in .env.
+  tg-egress:
+    build: ./deploy/tg-egress
+    profiles: ["demo"]
+    environment:
+      FI_SSH_TARGET: ${FI_SSH_TARGET:-root@104.238.24.196}
+    volumes:
+      - ${TG_SSH_KEY:-/dev/null}:/key:ro
+    restart: unless-stopped
+
   # ReAct worker as a separate A2A service (T-021): the orchestrator talks to
   # it only over the A2A protocol; a second node (T-031) is one more entry in
   # config/workers.yaml, no code changes.

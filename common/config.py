@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     n8n_encryption_key: str = ""
     monitor_token: str = ""  # shared secret n8n <-> /api/monitor/* (T-035)
 
+    # Per-request demo notifications to the owner's Telegram (T-044). Effective
+    # only on the demo profile with Telegram configured; delivery egresses via
+    # telegram_proxy_url (SSH-SOCKS through the FI node).
+    demo_notify_telegram: bool = False
+
     def cloud_llm_providers(self) -> list[str]:
         """Names of cloud providers whose API key is present."""
         keys = {

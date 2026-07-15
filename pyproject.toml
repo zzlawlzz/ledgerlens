@@ -13,7 +13,7 @@ dependencies = [
     "beautifulsoup4>=4.15.0",
     "fastapi>=0.139.0",
     "fastembed>=0.8.0",
-    "httpx>=0.28.1",
+    "httpx[socks]>=0.28.1",  # [socks] = SOCKS proxy support for the FI Telegram egress (T-044)
     "langchain-mcp-adapters>=0.3.0",
     "langchain-openai>=1.3.4",
     "langgraph>=1.2.8",

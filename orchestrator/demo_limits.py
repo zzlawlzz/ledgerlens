@@ -165,6 +165,13 @@ class DemoLimiter:
         self._roll_cost_day()
         self._cost_spent += max(cost_usd, 0.0)
 
+    def daily_report(self) -> tuple[float | None, float | None]:
+        """(spent_today, cap) for owner notifications; (None, None) off demo."""
+        if not self.enabled:
+            return None, None
+        self._roll_cost_day()
+        return self._cost_spent, self.daily_cost_cap_usd
+
     def _roll_cost_day(self) -> None:
         today = datetime.fromtimestamp(self._clock(), UTC).date()
         if today != self._cost_day:
