@@ -59,8 +59,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     google_api_key: str = ""
     alphavantage_api_key: str = ""  # EOD prices, price_enrich (T-033, Q-19)
-    tavily_api_key: str = ""  # web search API, web_search (T-043) — free tier
-    brave_api_key: str = ""  # web search API, web_search (T-043) — free tier, RU-reachable
+    tavily_api_key: str = ""  # web search API, web_search (T-043) — free, RU-reachable
+    brave_api_key: str = ""  # web search API, web_search (T-043) — alt backend (paid)
 
     edgar_user_agent: str = ""
     edgar_proxy_url: str = ""
