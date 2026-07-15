@@ -40,7 +40,9 @@ def test_heartbeat_interval_within_proxy_budget() -> None:
 def test_sse_headers_disable_buffering() -> None:
     headers = api._sse_headers("run-1")
     assert headers["X-Accel-Buffering"] == "no"
-    assert headers["Cache-Control"] == "no-cache"
+    # no-transform stops a CDN buffering the stream to gzip-compress it (a
+    # browser's Accept-Encoding otherwise makes Cloudflare buffer the whole SSE).
+    assert headers["Cache-Control"] == "no-cache, no-transform"
     assert headers["X-Run-Id"] == "run-1"
 
 
