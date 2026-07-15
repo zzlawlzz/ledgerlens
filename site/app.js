@@ -16,7 +16,7 @@ const I18N = {
     cta_github: "View on GitHub",
     cta_contact: "Contact",
     hero_demo_note:
-      "The demo is public, rate- and budget-limited, and served from a self-hosted node behind a Cloudflare Tunnel — it may be offline during maintenance.",
+      "The demo is public, rate- and budget-limited, and runs on a workstation backend exposed through a small VPS — it may be offline during maintenance.",
 
     how_title: "Watch it self-correct",
     how_lede:
@@ -27,12 +27,12 @@ const I18N = {
 
     arch_title: "Architecture",
     arch_lede:
-      "A Plan-and-Execute orchestrator delegates to ReAct workers over A2A — one local, one on a remote node across an AmneziaWG mesh. Tools are MCP servers; the browser is fed by an AG-UI event stream. Hover a layer.",
+      "A Plan-and-Execute orchestrator delegates to ReAct workers over A2A — one local, a second node pluggable via the same contract. Tools are MCP servers; the browser is fed by an AG-UI event stream. Hover a layer.",
     tip_default: "Hover a component for detail.",
     tip_ui: "Web UI — React/TypeScript, rendering the AG-UI event stream (plan, steps, tool calls, citations) live.",
     tip_orch: "Orchestrator — LangGraph Plan-and-Execute: plans, dispatches steps, assesses results and re-plans on failure.",
-    tip_w1: "Local ReAct worker — runs tools in a reason-act loop; same A2A contract as the remote node.",
-    tip_w2: "Remote ReAct worker — a second node reached over an AmneziaWG mesh; round-robin with local-preferred failover.",
+    tip_w1: "Local ReAct worker — runs tools in a reason-act loop; same A2A contract as any added node.",
+    tip_w2: "Optional second ReAct worker node — same A2A contract; round-robin with local-preferred failover.",
     tip_router: "Model Router — tiered: local CPU for classify/extract/guard, cloud API for plan/synthesize, with cost tracking.",
     tip_tools: "MCP tool servers — sql_query, rag_search (hybrid + rerank), price_enrich; swappable and contract-tested.",
     tip_pg: "Postgres — normalized filing facts plus pgvector; the read-only role backs Grafana.",
@@ -43,9 +43,9 @@ const I18N = {
     depth_eval_t: "Eval-in-CI",
     depth_eval_d: "A 41-case golden set gated in GitHub Actions with quality thresholds (faithfulness, citation coverage, guardrail, numeric accuracy).",
     depth_eval_p: "eval.yml runs →",
-    depth_a2a_t: "Two-node A2A",
-    depth_a2a_d: "Workers speak the same A2A contract whether local or on a remote VPS reached over an AmneziaWG mesh — round-robin with local-preferred failover.",
-    depth_a2a_p: "gate G3 · deploy/worker-node/",
+    depth_a2a_t: "Pluggable A2A nodes",
+    depth_a2a_d: "Workers speak the same A2A contract, so a second node is one config entry — round-robin with local-preferred failover. The public demo runs a single local worker.",
+    depth_a2a_p: "T-031 · config/workers.yaml",
     depth_mcp_t: "MCP tools",
     depth_mcp_d: "sql_query, rag_search and price_enrich run as MCP servers — swappable, contract-tested, callable by any agent.",
     depth_mcp_p: "T-027 · MCP servers + clients",
@@ -98,7 +98,7 @@ const I18N = {
     cta_github: "Смотреть на GitHub",
     cta_contact: "Связаться",
     hero_demo_note:
-      "Демо публичное, с лимитами по частоте и бюджету, крутится на self-hosted ноде за Cloudflare Tunnel — может быть недоступно во время обслуживания.",
+      "Демо публичное, с лимитами по частоте и бюджету, работает на воркстейшн-бэкенде через малый VPS — может быть недоступно во время обслуживания.",
 
     how_title: "Как система переигрывает шаг",
     how_lede:
@@ -109,12 +109,12 @@ const I18N = {
 
     arch_title: "Архитектура",
     arch_lede:
-      "Оркестратор Plan-and-Execute делегирует ReAct-воркерам по A2A — один локальный, один на удалённой ноде через меш AmneziaWG. Инструменты — MCP-серверы; в браузер идёт поток событий AG-UI. Наведите на слой.",
+      "Оркестратор Plan-and-Execute делегирует ReAct-воркерам по A2A — один локальный, вторая нода подключается тем же контрактом. Инструменты — MCP-серверы; в браузер идёт поток событий AG-UI. Наведите на слой.",
     tip_default: "Наведите на компонент для деталей.",
     tip_ui: "Web UI — React/TypeScript, рендерит поток событий AG-UI (план, шаги, вызовы инструментов, цитаты) вживую.",
     tip_orch: "Оркестратор — LangGraph Plan-and-Execute: планирует, раздаёт шаги, оценивает результаты и переигрывает при сбое.",
-    tip_w1: "Локальный ReAct-воркер — гоняет инструменты в цикле reason-act; тот же A2A-контракт, что и у удалённой ноды.",
-    tip_w2: "Удалённый ReAct-воркер — вторая нода через меш AmneziaWG; round-robin с приоритетом локальной ноды при failover.",
+    tip_w1: "Локальный ReAct-воркер — гоняет инструменты в цикле reason-act; тот же A2A-контракт, что и у любой добавленной ноды.",
+    tip_w2: "Опциональная вторая ReAct-нода — тот же A2A-контракт; round-robin с приоритетом локальной ноды при failover.",
     tip_router: "Model Router — многоуровневый: локальный CPU для классификации/извлечения/guard, облачный API для плана/синтеза, с учётом стоимости.",
     tip_tools: "MCP-инструменты — sql_query, rag_search (hybrid + rerank), price_enrich; заменяемы и покрыты контракт-тестами.",
     tip_pg: "Postgres — нормализованные факты отчётности плюс pgvector; read-only роль питает Grafana.",
@@ -125,9 +125,9 @@ const I18N = {
     depth_eval_t: "Eval в CI",
     depth_eval_d: "Golden-набор из 41 кейса с гейтом в GitHub Actions и порогами качества (faithfulness, покрытие цитатами, guardrail, числовая точность).",
     depth_eval_p: "прогоны eval.yml →",
-    depth_a2a_t: "Две ноды по A2A",
-    depth_a2a_d: "Воркеры говорят на одном A2A-контракте — локально или на удалённом VPS через меш AmneziaWG; round-robin с приоритетом локальной ноды при failover.",
-    depth_a2a_p: "гейт G3 · deploy/worker-node/",
+    depth_a2a_t: "Подключаемые A2A-ноды",
+    depth_a2a_d: "Воркеры говорят на одном A2A-контракте, так что вторая нода — одна запись в конфиге; round-robin с приоритетом локальной ноды при failover. Публичное демо гоняет один локальный воркер.",
+    depth_a2a_p: "T-031 · config/workers.yaml",
     depth_mcp_t: "MCP-инструменты",
     depth_mcp_d: "sql_query, rag_search и price_enrich — MCP-серверы: заменяемы, покрыты контракт-тестами, вызываются любым агентом.",
     depth_mcp_p: "T-027 · MCP-серверы и клиенты",

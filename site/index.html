@@ -11,7 +11,7 @@
   <!-- Open Graph / social preview -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="LedgerLens — Multi-Agent Financial Analysis" />
-  <meta property="og:description" content="Ask in plain language → the system plans, self-corrects, and cites every claim to the SEC/MOEX primary source. Self-hostable, two-node, eval-gated." />
+  <meta property="og:description" content="Ask in plain language → the system plans, self-corrects, and cites every claim to the SEC/MOEX primary source. Self-hostable, A2A-distributed, eval-gated." />
   <meta property="og:url" content="https://ledgerlens.space/" />
   <meta property="og:image" content="https://ledgerlens.space/assets/grafana_operations.png" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -56,8 +56,8 @@
         <a class="btn btn-ghost" href="mailto:zzlawlzz5@gmail.com" data-i18n="cta_contact">Contact</a>
       </div>
       <p class="demo-note" data-i18n="hero_demo_note">
-        The demo is public, rate- and budget-limited, and served from a
-        self-hosted node behind a Cloudflare Tunnel — it may be offline during
+        The demo is public, rate- and budget-limited, and runs on a workstation
+        backend exposed through a small VPS — it may be offline during
         maintenance.
       </p>
     </section>
@@ -87,7 +87,7 @@
       <h2 data-i18n="arch_title">Architecture</h2>
       <p class="section-lede" data-i18n="arch_lede">
         A Plan-and-Execute orchestrator delegates to ReAct workers over A2A —
-        one local, one on a remote node across an AmneziaWG mesh. Tools are MCP
+        one local, a second node pluggable via the same contract. Tools are MCP
         servers; the browser is fed by an AG-UI event stream. Hover a layer.
       </p>
       <div class="arch-wrap">
@@ -112,9 +112,8 @@
           </g>
           <g class="arch-node" data-tip="tip_w2">
             <rect x="490" y="210" width="200" height="56" rx="10" />
-            <text x="590" y="230" class="n-title">Worker (ReAct)</text>
-            <text x="590" y="248" class="n-sub">remote · A2A over</text>
-            <text x="590" y="262" class="n-sub">AmneziaWG</text>
+            <text x="590" y="234" class="n-title">Worker (ReAct)</text>
+            <text x="590" y="252" class="n-sub">optional 2nd node · A2A</text>
           </g>
           <!-- Router -->
           <g class="arch-node" data-tip="tip_router">
@@ -179,9 +178,9 @@
           <a class="proof" href="https://github.com/zzlawlzz/ledgerlens/actions/workflows/eval.yml" target="_blank" rel="noopener" data-i18n="depth_eval_p">eval.yml runs →</a>
         </article>
         <article class="card">
-          <h3 data-i18n="depth_a2a_t">Two-node A2A</h3>
-          <p data-i18n="depth_a2a_d">Workers speak the same A2A contract whether local or on a remote VPS reached over an AmneziaWG mesh — round-robin with local-preferred failover.</p>
-          <span class="proof muted" data-i18n="depth_a2a_p">gate G3 · deploy/worker-node/</span>
+          <h3 data-i18n="depth_a2a_t">Pluggable A2A nodes</h3>
+          <p data-i18n="depth_a2a_d">Workers speak the same A2A contract, so a second node is one config entry — round-robin with local-preferred failover. The public demo runs a single local worker.</p>
+          <span class="proof muted" data-i18n="depth_a2a_p">T-031 · config/workers.yaml</span>
         </article>
         <article class="card">
           <h3 data-i18n="depth_mcp_t">MCP tools</h3>
