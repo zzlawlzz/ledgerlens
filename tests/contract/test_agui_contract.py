@@ -158,6 +158,58 @@ def test_overlapping_same_tool_without_ids_never_emits_orphan_end() -> None:
     _assert_no_orphan_tool_end(_translate(traces))
 
 
+def test_run_finished_closes_tool_calls_left_open_by_aborted_step() -> None:
+    # A step aborted by budget/deadline exceeded emits tool_call_started with no
+    # matching tool_call_finished (the trace just stops), and two concurrent
+    # same-named calls both dangle. RUN_FINISHED must not be emitted while any
+    # tool call is still active — the AG-UI client rejects it with "Cannot send
+    # 'RUN_FINISHED' while tool calls are still active" and turns an otherwise
+    # usable partial answer into a hard error banner. The adapter closes them.
+    traces = [
+        _trace(1, "run_started", {"question": "compare", "mode": "us"}),
+        _trace(2, "tool_call_started", {"tool": "rag_search", "tool_call_id": "a"}),
+        _trace(3, "tool_call_started", {"tool": "rag_search", "tool_call_id": "b"}),
+        # step hit budget_exceeded here — neither "a" nor "b" ever finishes
+        _trace(4, "run_finished", {"status": "succeeded", "answer": "partial answer"}),
+    ]
+    events = _translate(traces)
+    _assert_no_orphan_tool_end(events)
+    started = {e.tool_call_id for e in events if e.type == EventType.TOOL_CALL_START}
+    ended = {e.tool_call_id for e in events if e.type == EventType.TOOL_CALL_END}
+    assert started == {"a", "b"}
+    assert ended == {"a", "b"}  # both dangling calls closed despite never finishing
+    last_end = max(i for i, e in enumerate(events) if e.type == EventType.TOOL_CALL_END)
+    run_finished = next(i for i, e in enumerate(events) if e.type == EventType.RUN_FINISHED)
+    assert last_end < run_finished  # every END precedes RUN_FINISHED (none active)
+    encoder = EventEncoder()
+    for e in events:
+        encoder.encode(e)  # still a valid protocol stream
+
+
+def test_run_error_closes_open_tool_calls_before_run_error() -> None:
+    # Same invariant for the error terminal: a tool call open when the run errors
+    # out must be closed before RUN_ERROR.
+    traces = [
+        _trace(1, "run_started", {"question": "q", "mode": "us"}),
+        _trace(2, "tool_call_started", {"tool": "sql_query", "tool_call_id": "x", "arguments": {}}),
+        _trace(3, "run_error", {"error": "boom"}),
+    ]
+    events = _translate(traces)
+    ends = [e for e in events if e.type == EventType.TOOL_CALL_END]
+    assert [e.tool_call_id for e in ends] == ["x"]
+    end_idx = events.index(ends[0])
+    err_idx = next(i for i, e in enumerate(events) if e.type == EventType.RUN_ERROR)
+    assert end_idx < err_idx
+
+
+def test_paired_tool_calls_are_not_double_closed_at_run_finished() -> None:
+    # Guard against regression: a properly finished tool call is already closed,
+    # so run end must not emit a second END for it.
+    events = _translate_all()  # RECORDED_RUN: one sql_query start+finish, then run_finished
+    ends = [e for e in events if e.type == EventType.TOOL_CALL_END]
+    assert len(ends) == 1  # exactly one END, not a duplicate from the run-end sweep
+
+
 def test_text_message_pairing_and_full_answer_reassembly() -> None:
     events = _translate_all()
     start = next(e for e in events if e.type == EventType.TEXT_MESSAGE_START)

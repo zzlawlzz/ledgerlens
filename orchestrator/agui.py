@@ -57,6 +57,28 @@ class TraceToAgUiAdapter:
         self._thread_id = thread_id
         self._run_id = run_id
         self._open_tool_calls: dict[str, str] = {}  # tool name -> tool_call_id
+        # Every tool_call_id whose TOOL_CALL_START was emitted but not yet ended.
+        # Unlike the name-keyed map above it never loses a concurrent same-named
+        # call, so it is the source of truth for what to close on run end.
+        self._active_call_ids: set[str] = set()
+
+    def _close_active_tool_calls(self) -> list[BaseEvent]:
+        """Emit a ``TOOL_CALL_END`` for every tool call still open.
+
+        A step aborted mid-flight — budget/deadline exceeded, worker error, a
+        replan — can leave a ``tool_call_started`` with no ``tool_call_finished``:
+        the trace just stops. The AG-UI client then rejects the terminal
+        ``RUN_FINISHED`` / ``RUN_ERROR`` ("Cannot send 'RUN_FINISHED' while tool
+        calls are still active"), turning an otherwise-usable partial answer into
+        a hard error banner. Closing every dangling call first ends the run
+        cleanly. Sorted for deterministic output.
+        """
+        events: list[BaseEvent] = [
+            ToolCallEndEvent(tool_call_id=cid) for cid in sorted(self._active_call_ids)
+        ]
+        self._active_call_ids.clear()
+        self._open_tool_calls.clear()
+        return events
 
     def translate(self, event: TraceEvent) -> list[BaseEvent]:
         payload = event.payload
@@ -102,6 +124,7 @@ class TraceToAgUiAdapter:
                 # keyed by tool name for legacy traces that don't carry one.
                 call_id = str(payload.get("tool_call_id") or uuid.uuid4())
                 self._open_tool_calls[tool] = call_id
+                self._active_call_ids.add(call_id)
                 return [
                     ToolCallStartEvent(tool_call_id=call_id, tool_call_name=tool),
                     ToolCallArgsEvent(
@@ -128,6 +151,7 @@ class TraceToAgUiAdapter:
                         # No matching start on record: never emit an orphan END.
                         return []
                     call_id = popped
+                self._active_call_ids.discard(call_id)
                 return [
                     ToolCallEndEvent(tool_call_id=call_id),
                     # Status/preview for the UI: a failed call is highlighted
@@ -156,6 +180,7 @@ class TraceToAgUiAdapter:
                     for i in range(0, len(answer), ANSWER_CHUNK_CHARS)
                 ] or [TextMessageContentEvent(message_id=message_id, delta=" ")]
                 return [
+                    *self._close_active_tool_calls(),
                     TextMessageStartEvent(message_id=message_id),
                     *content,
                     TextMessageEndEvent(message_id=message_id),
@@ -172,7 +197,10 @@ class TraceToAgUiAdapter:
                     RunFinishedEvent(thread_id=self._thread_id, run_id=self._run_id),
                 ]
             case "run_error":
-                return [RunErrorEvent(message=str(payload.get("error", "unknown error")))]
+                return [
+                    *self._close_active_tool_calls(),
+                    RunErrorEvent(message=str(payload.get("error", "unknown error"))),
+                ]
             case _:
                 return []
 
