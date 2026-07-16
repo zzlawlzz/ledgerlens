@@ -743,6 +743,11 @@ async def web_search(
                 log.info("web_facts_enriched", count=len(facts), query=query_norm[:80])
         except Exception as error:  # noqa: BLE001 — enrichment is never fatal
             log.warning("web_facts_enrich_failed", error=str(error)[:200])
+        # raw_content fed fact extraction only; strip it so the observation the
+        # worker sees carries just the short snippet, not full page bodies (those
+        # ballooned the worker's token cost with no benefit to its reasoning).
+        for r in results:
+            r.pop("raw_content", None)
         return {
             "results": results,
             "citations": [_citation(r) for r in results],

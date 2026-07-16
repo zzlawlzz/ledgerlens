@@ -42,8 +42,9 @@ PREVIEW_CHARS = 500
 NO_DATA_MARKER = "NO_DATA:"
 DEFAULT_RAG_TOP_K = 8  # mirrors tools.rag.core.DEFAULT_TOP_K (T-041)
 # Per-step cap on web_search calls (T-046): enough for a genuine multi-facet
-# lookup, low enough to stop a worker looping over an unavailable figure.
-MAX_WEB_SEARCHES_PER_STEP = 4
+# lookup (a real comparison needs ~2), low enough to stop a worker looping over
+# an unavailable figure and to keep a stubborn step from dragging on latency.
+MAX_WEB_SEARCHES_PER_STEP = 3
 GROUND_CHECK_CONTEXT_MAX_CHARS = 8000
 
 ToolImpl = Callable[..., Awaitable[dict[str, Any]]]
