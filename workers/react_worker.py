@@ -41,6 +41,9 @@ THOUGHT_PREVIEW_CHARS = 300
 PREVIEW_CHARS = 500
 NO_DATA_MARKER = "NO_DATA:"
 DEFAULT_RAG_TOP_K = 8  # mirrors tools.rag.core.DEFAULT_TOP_K (T-041)
+# Per-step cap on web_search calls (T-046): enough for a genuine multi-facet
+# lookup, low enough to stop a worker looping over an unavailable figure.
+MAX_WEB_SEARCHES_PER_STEP = 4
 GROUND_CHECK_CONTEXT_MAX_CHARS = 8000
 
 ToolImpl = Callable[..., Awaitable[dict[str, Any]]]
@@ -326,9 +329,31 @@ def _build_tools(
         )
 
     if "web_search" in task.allowed_tools and "web_search" in impls:
+        # Deterministic anti-loop: a worker chasing an unavailable figure (e.g. a
+        # private company not in any corpus) otherwise fires a dozen near-duplicate
+        # searches until it hits the iteration budget — the "helpless" failure the
+        # prompt alone doesn't prevent. After a small cap, the tool refuses further
+        # searches and tells the worker to conclude (answer or NO_DATA).
+        web_search_calls = [0]
 
         async def _web_search(query: str) -> str:
             """Search the open web for facts the loaded corpus lacks."""
+            web_search_calls[0] += 1
+            if web_search_calls[0] > MAX_WEB_SEARCHES_PER_STEP:
+                return json.dumps(
+                    {
+                        "error": (
+                            f"web_search limit for this step reached "
+                            f"({MAX_WEB_SEARCHES_PER_STEP} searches). Do NOT search again — "
+                            "more searches will not help. Conclude NOW: answer from the data "
+                            "already gathered (SQL, web_facts, and the results above), or if "
+                            "the requested figure is genuinely unavailable, reply with a "
+                            "single line starting `NO_DATA:` naming exactly what is missing."
+                        ),
+                        "retryable": False,
+                    },
+                    ensure_ascii=False,
+                )
             return await _traced_call("web_search", {"query": query})
 
         tools.append(

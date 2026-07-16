@@ -115,6 +115,36 @@ async def test_iteration_limit_returns_budget_exceeded() -> None:
     assert result.usage.tool_calls >= 1
 
 
+async def test_web_search_cap_stops_looping() -> None:
+    """Past the per-step cap, the tool refuses further searches so a worker can't
+    loop over an unavailable figure until it burns the iteration budget (T-046)."""
+    from workers.react_worker import MAX_WEB_SEARCHES_PER_STEP
+
+    calls = {"n": 0}
+
+    async def _counting_web_search(query: str) -> dict[str, Any]:
+        calls["n"] += 1
+        return {"results": [], "citations": [], "trust_summary": {"level": "none"}, "source": "web"}
+
+    # The model asks to search more times than the cap allows, then concedes.
+    script: list[BaseMessage] = [
+        _tool_call_message("web_search", {"query": f"q{i}"}, f"c{i}")
+        for i in range(MAX_WEB_SEARCHES_PER_STEP + 3)
+    ]
+    script.append(_final_message("NO_DATA: the requested company is not available"))
+    result = await run_worker_task(
+        _task(
+            allowed_tools=["web_search", "sql_query", "schema_introspect"],
+            budget=WorkerBudget(max_iterations=20, deadline_s=30),
+        ),
+        model=_script(script),
+        tool_impls={**FAKE_TOOLS, "web_search": _counting_web_search},
+    )
+    # The real search ran at most the cap; the extra calls were refused by the tool.
+    assert calls["n"] == MAX_WEB_SEARCHES_PER_STEP
+    assert result.status == "no_data"
+
+
 async def test_deadline_returns_budget_exceeded() -> None:
     import asyncio
 
