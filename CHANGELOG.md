@@ -33,10 +33,34 @@ Polish & packaging (Phase 4). In progress.
   RU [README.ru.md](README.ru.md); this changelog.
 - **Presentation site** (T-039): bilingual (EN/RU) static site published at
   https://ledgerlens.space via GitHub Pages.
+- **Conversational demo UI** (T-042): reworked frontend — chat interface with a
+  live narrator and animated plan/step timeline, markdown-rendered answers,
+  cost/token/#LLM/#tool summary, dark/light theme and EN/RU. The event pipeline
+  (`agent.ts`) is unchanged; only the presentation was reimagined.
+- **Trust-tiered web search** (T-043): a `web_search` MCP tool reached only when
+  SQL/RAG can't answer (a company or figure not in EDGAR, a recent event). Each
+  source is scored by a domain-trust tier (audited filing/`*.gov`/wires = high;
+  official IR subdomains/reputable secondary = medium; unknown = low), findings
+  are cross-checked when no single source is trusted, and raw results are cached
+  in `web_documents`. Backends: Tavily API (default, RU-reachable) → scrape →
+  DeepSeek. Web facts are cited inline as `[web: <domain>]` with a trust badge.
+- **Owner demo notifications** (T-044): every public-demo run pings the owner's
+  Telegram with its question, status, cost, tokens and the day's running total.
+  Delivery egresses through an SSH-SOCKS sidecar via the FI VPS (api.telegram.org
+  is blocked from RU IPs), gated to the demo profile with no changes to the VPS.
+- **Web enrichment of the database** (T-045): facts distilled from web results
+  are stored in a `web_facts` table (keyed by entity/metric/period, separate from
+  the audited `financial_facts`) and surfaced to the agent's SQL path, so a
+  repeat question is answered from the DB with no new search.
+- **Robustness on unusual queries** (T-046): a per-step cap on web searches plus
+  a fail-fast rule for genuinely unavailable data (a private company, a forward
+  forecast) — the agent concedes honestly instead of looping until it exhausts
+  its budget.
 
 ### In progress
-- **T-037**: local CPU inference part (2–3 Ollama candidates) + ADR-3 close-out
-  — pending the home EPYC node.
+- **T-037**: local model inference part (2–3 Ollama candidates) + ADR-3 close-out
+  — pending the local tier (workstation GPU/CPU) being wired up in migration
+  Phase 2; the demo currently runs entirely on the cloud LLM tier.
 - **T-040** (gate G4): the v1.0 clean-machine release — a tagged release, GitHub
   Release notes and branch protection remain.
 
