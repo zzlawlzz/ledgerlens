@@ -11,7 +11,7 @@ const I18N = {
     hero_eyebrow: "Self-hostable · multi-agent · eval-gated",
     hero_title: "Financial filings, analyzed like an analyst — not searched like a box.",
     hero_lede:
-      "Ask in plain language. LedgerLens builds an explicit multi-step plan, its agents work over structured facts (SQL) and narrative disclosures (RAG), it self-corrects when a step comes back empty — and every claim carries a citation to the exact SEC / MOEX source.",
+      "Ask in plain language. LedgerLens builds an explicit multi-step plan, its agents work over structured facts (SQL) and narrative disclosures (RAG), reach the web with trust-tiered search when the corpus can't answer, self-correct when a step comes back empty — and every claim carries a citation to its source.",
     cta_demo: "Try the live demo",
     cta_github: "View on GitHub",
     cta_contact: "Contact",
@@ -27,7 +27,7 @@ const I18N = {
 
     arch_title: "Architecture",
     arch_lede:
-      "A Plan-and-Execute orchestrator delegates to ReAct workers over A2A — one local, a second node pluggable via the same contract. Tools are MCP servers; the browser is fed by an AG-UI event stream. Hover a layer.",
+      "A Plan-and-Execute orchestrator delegates to ReAct workers over A2A — one local, a second node pluggable via the same contract. Tools are MCP servers — SQL, RAG, price and a trust-tiered web search that enriches the DB; the browser is fed by an AG-UI event stream. Hover a layer.",
     tip_default: "Hover a component for detail.",
     tip_ui: "Web UI — React/TypeScript, rendering the AG-UI event stream (plan, steps, tool calls, citations) live.",
     tip_orch: "Orchestrator — LangGraph Plan-and-Execute: plans, dispatches steps, assesses results and re-plans on failure.",
@@ -35,7 +35,8 @@ const I18N = {
     tip_w2: "Optional second ReAct worker node — same A2A contract; round-robin with local-preferred failover.",
     tip_router: "Model Router — tiered: local CPU for classify/extract/guard, cloud API for plan/synthesize, with cost tracking.",
     tip_tools: "MCP tool servers — sql_query, rag_search (hybrid + rerank), price_enrich; swappable and contract-tested.",
-    tip_pg: "Postgres — normalized filing facts plus pgvector; the read-only role backs Grafana.",
+    tip_web: "web_search — reached only when SQL/RAG can't answer. Scores each source by a domain-trust tier, cross-checks when none is trusted, and caches the facts it finds into web_facts so repeats hit the DB, not the network.",
+    tip_pg: "Postgres — normalized filing facts, web-sourced web_facts and pgvector; the read-only role backs Grafana.",
     tip_qd: "Qdrant — narrative disclosure vectors for hybrid retrieval with citations.",
 
     depth_title: "Depth markers",
@@ -93,7 +94,7 @@ const I18N = {
     hero_eyebrow: "Self-hosted · мультиагентная · с eval-гейтом",
     hero_title: "Отчётность компаний — анализ как у аналитика, а не поиск по коробке.",
     hero_lede:
-      "Спросите обычным языком. LedgerLens строит явный многошаговый план, агенты работают с числовыми фактами (SQL) и нарративными разделами (RAG), система сама переигрывает шаг, если он вернул пусто, — и каждое утверждение снабжено ссылкой на точный источник SEC / MOEX.",
+      "Спросите обычным языком. LedgerLens строит явный многошаговый план, агенты работают с числовыми фактами (SQL) и нарративными разделами (RAG), идут в веб с поиском по тирам доверия, когда корпус не отвечает, сами переигрывают пустой шаг — и каждое утверждение снабжено ссылкой на источник.",
     cta_demo: "Открыть живое демо",
     cta_github: "Смотреть на GitHub",
     cta_contact: "Связаться",
@@ -109,7 +110,7 @@ const I18N = {
 
     arch_title: "Архитектура",
     arch_lede:
-      "Оркестратор Plan-and-Execute делегирует ReAct-воркерам по A2A — один локальный, вторая нода подключается тем же контрактом. Инструменты — MCP-серверы; в браузер идёт поток событий AG-UI. Наведите на слой.",
+      "Оркестратор Plan-and-Execute делегирует ReAct-воркерам по A2A — один локальный, вторая нода подключается тем же контрактом. Инструменты — MCP-серверы: SQL, RAG, цены и веб-поиск с тирами доверия, обогащающий БД; в браузер идёт поток событий AG-UI. Наведите на слой.",
     tip_default: "Наведите на компонент для деталей.",
     tip_ui: "Web UI — React/TypeScript, рендерит поток событий AG-UI (план, шаги, вызовы инструментов, цитаты) вживую.",
     tip_orch: "Оркестратор — LangGraph Plan-and-Execute: планирует, раздаёт шаги, оценивает результаты и переигрывает при сбое.",
@@ -117,7 +118,8 @@ const I18N = {
     tip_w2: "Опциональная вторая ReAct-нода — тот же A2A-контракт; round-robin с приоритетом локальной ноды при failover.",
     tip_router: "Model Router — многоуровневый: локальный CPU для классификации/извлечения/guard, облачный API для плана/синтеза, с учётом стоимости.",
     tip_tools: "MCP-инструменты — sql_query, rag_search (hybrid + rerank), price_enrich; заменяемы и покрыты контракт-тестами.",
-    tip_pg: "Postgres — нормализованные факты отчётности плюс pgvector; read-only роль питает Grafana.",
+    tip_web: "web_search — вызывается, только когда SQL/RAG не отвечают. Оценивает каждый источник тиром доверия, кросс-проверяет при отсутствии доверенного и кэширует найденные факты в web_facts, чтобы повторы били в БД, а не в сеть.",
+    tip_pg: "Postgres — нормализованные факты отчётности, веб-факты web_facts и pgvector; read-only роль питает Grafana.",
     tip_qd: "Qdrant — векторы нарративных разделов для гибридного поиска с цитатами.",
 
     depth_title: "Маркеры глубины",
