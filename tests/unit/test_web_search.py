@@ -18,9 +18,11 @@ import respx
 from tools.web_search import core
 from tools.web_search.core import (
     _decode_ddg_url,
+    normalize_entity,
     normalize_query,
     parse_brave,
     parse_ddg_html,
+    parse_extracted_facts,
     parse_tavily,
     trust_for_domain,
     trust_summary,
@@ -173,6 +175,41 @@ def test_parse_brave_strips_html_and_ranks() -> None:
     assert results[-1]["trust"] == "low"
 
 
+def test_normalize_entity() -> None:
+    assert normalize_entity("AMD (Advanced Micro Devices)") == "amd"
+    assert normalize_entity("Apple Inc.") == "apple"
+    assert normalize_entity("АО Биокад") == "биокад"
+
+
+def test_parse_extracted_facts_keeps_only_result_backed_rows() -> None:
+    results = [
+        {"url": "https://ir.amd.com/x", "domain": "ir.amd.com", "trust": "medium"},
+    ]
+    raw = """```json
+    [
+      {"entity":"AMD","metric":"Revenue","period":"FY2025","value":"34.6",
+       "unit":"billion USD","value_text":"$34.6 billion","source_url":"https://ir.amd.com/x"},
+      {"entity":"AMD","metric":"revenue","period":"FY2025","value":34.6,
+       "source_url":"https://ir.amd.com/x"},
+      {"entity":"Ghost","metric":"revenue","period":"FY2025","value":9,
+       "source_url":"https://made-up.example/never"}
+    ]
+    ```"""
+    facts = parse_extracted_facts(raw, results)
+    # The made-up URL row is dropped; the duplicate (entity,metric,period) is deduped.
+    assert len(facts) == 1
+    f = facts[0]
+    assert f["entity_norm"] == "amd" and f["metric"] == "revenue" and f["period"] == "FY2025"
+    assert f["value"] == 34.6 and f["unit"] == "billion USD"
+    # domain + trust come from the verified result, never from the model.
+    assert f["domain"] == "ir.amd.com" and f["trust"] == "medium"
+
+
+def test_parse_extracted_facts_bad_json_is_empty() -> None:
+    assert parse_extracted_facts("not json at all", []) == []
+    assert parse_extracted_facts("", []) == []
+
+
 # --------------------------------------------------------------- orchestration
 
 
@@ -298,6 +335,74 @@ async def test_brave_primary_when_key_set(monkeypatch: pytest.MonkeyPatch) -> No
     assert result["source"] == "web"
     assert brave.call_count == 1 and ddg.call_count == 0  # Brave used, scraper untouched
     assert result["results"][0]["domain"] == "sec.gov"
+
+
+class _RecordingSession:
+    """Fake session that records (sql, params) so a test can assert which table
+    was written (web_documents vs web_facts)."""
+
+    def __init__(self, cache_rows: list[Any], calls: list[tuple[str, Any]]) -> None:
+        self._cache_rows = cache_rows
+        self._calls = calls
+
+    async def __aenter__(self) -> _RecordingSession:
+        return self
+
+    async def __aexit__(self, *_: Any) -> bool:
+        return False
+
+    async def execute(self, stmt: Any, params: Any = None) -> _FakeResult:
+        self._calls.append((str(stmt), params))
+        return _FakeResult([] if isinstance(params, list) else self._cache_rows)
+
+    async def commit(self) -> None:
+        return None
+
+
+def _recording_factory(cache_rows: list[Any], calls: list[tuple[str, Any]]) -> Any:
+    def make() -> _RecordingSession:
+        return _RecordingSession(cache_rows, calls)
+
+    return make
+
+
+@pytest.mark.asyncio
+async def test_web_search_enriches_web_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        core, "get_settings", lambda: SimpleNamespace(brave_api_key="k", tavily_api_key="")
+    )
+    payload = {
+        "web": {
+            "results": [
+                {
+                    "title": "AMD Q4 2025",
+                    "url": "https://ir.amd.com/x",
+                    "description": "AMD full year 2025 revenue $34.6 billion",
+                }
+            ]
+        }
+    }
+    facts_json = (
+        '[{"entity":"AMD","metric":"revenue","period":"FY2025","value":34.6,'
+        '"unit":"billion USD","value_text":"$34.6 billion","source_url":"https://ir.amd.com/x"}]'
+    )
+    router = SimpleNamespace(chat=lambda *_a, **_k: _coro(SimpleNamespace(text=facts_json)))
+    calls: list[tuple[str, Any]] = []
+    with respx.mock:
+        respx.get(core.BRAVE_URL).mock(return_value=httpx.Response(200, json=payload))
+        result = await web_search(
+            "AMD annual revenue 2025",
+            session_factory=_recording_factory([], calls),
+            router=router,
+            limiter=_limiter(),
+        )
+    assert result["source"] == "web"
+    fact_writes = [params for sql, params in calls if "INSERT INTO web_facts" in sql]
+    assert fact_writes, "web_facts was not written"
+    row = fact_writes[0][0]
+    assert row["entity_norm"] == "amd" and row["metric"] == "revenue"
+    assert row["period"] == "FY2025" and row["value"] == 34.6
+    assert row["domain"] == "ir.amd.com" and row["query_norm"] == "amd annual revenue 2025"
 
 
 @pytest.mark.asyncio

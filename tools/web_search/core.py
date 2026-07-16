@@ -26,6 +26,7 @@ so the UI badges them and the grounding pass keeps them.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 from datetime import UTC, datetime, timedelta
@@ -111,6 +112,37 @@ _UPSERT_SQL = text(
     "ON CONFLICT (query_norm, url) DO UPDATE SET "
     "title = EXCLUDED.title, snippet = EXCLUDED.snippet, trust = EXCLUDED.trust, "
     "retrieved_at = EXCLUDED.retrieved_at"
+)
+
+# web_facts (T-045): structured facts distilled from web results so a repeat
+# question is answered from the DB (via sql_query) instead of re-searching.
+_WEB_FACTS_UPSERT_SQL = text(
+    "INSERT INTO web_facts (entity, entity_norm, metric, period, value, unit, value_text, "
+    "source_url, domain, trust, query_norm, retrieved_at) VALUES "
+    "(:entity, :entity_norm, :metric, :period, :value, :unit, :value_text, :source_url, "
+    ":domain, :trust, :query_norm, :retrieved_at) "
+    "ON CONFLICT (entity_norm, metric, period) DO UPDATE SET "
+    "entity = EXCLUDED.entity, value = EXCLUDED.value, unit = EXCLUDED.unit, "
+    "value_text = EXCLUDED.value_text, source_url = EXCLUDED.source_url, "
+    "domain = EXCLUDED.domain, trust = EXCLUDED.trust, query_norm = EXCLUDED.query_norm, "
+    "retrieved_at = EXCLUDED.retrieved_at"
+)
+MAX_EXTRACTED_FACTS = 8
+_FACT_EXTRACTION_SYS = (
+    "You extract structured numeric facts from web search results for a financial "
+    "database. Return ONLY a JSON array (no prose, no markdown). Each element:\n"
+    '  {"entity","metric","period","value","unit","value_text","source_url"}\n'
+    "Rules:\n"
+    "- Extract ONLY facts explicitly stated in the provided snippets. Never use your own "
+    "knowledge. If a snippet has no clear numeric fact, skip it.\n"
+    "- entity: the company/subject the fact is about (e.g. 'AMD').\n"
+    "- metric: a short lowercase noun, e.g. 'revenue', 'net_income', 'employees'.\n"
+    "- period: fiscal period like 'FY2025' or 'Q1 2024'; '' if none is stated.\n"
+    "- value: the number as stated, e.g. 34.6 (no currency sign); null if not numeric.\n"
+    "- unit: e.g. 'billion USD', 'USD', 'people'; '' if unknown.\n"
+    "- value_text: the original phrasing, e.g. '$34.6 billion'.\n"
+    "- source_url: the exact result URL the fact came from (must be one of the given URLs).\n"
+    f"Return at most {MAX_EXTRACTED_FACTS} of the most relevant facts, or [] if none."
 )
 
 
@@ -509,6 +541,119 @@ async def _write_cache(
         await session.commit()
 
 
+def normalize_entity(entity: str) -> str:
+    """Short lowercase lookup key for an entity name (strips legal suffixes/parens)."""
+    text_only = re.sub(r"\([^)]*\)", " ", entity).lower()
+    text_only = re.sub(
+        r"\b(inc|corp|corporation|ltd|plc|llc|co|company|ао|оао|пао)\b", " ", text_only
+    )
+    return re.sub(r"[^a-zа-я0-9 ]+", " ", text_only).strip()[:120] or entity.strip().lower()[:120]
+
+
+def _coerce_value(raw: Any) -> float | None:
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    if isinstance(raw, str):
+        cleaned = raw.replace(",", "").replace("$", "").strip()
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+    return None
+
+
+def parse_extracted_facts(raw: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Parse the extractor's JSON array into upsert-ready web_facts rows (pure).
+
+    Only facts whose ``source_url`` matches one of the search results are kept, so
+    the domain/trust are taken from the verified result, never from the model."""
+    text_only = raw.strip()
+    if text_only.startswith("```"):  # tolerate a ```json fence
+        text_only = re.sub(r"^```[a-z]*\n?|\n?```$", "", text_only).strip()
+    start, end = text_only.find("["), text_only.rfind("]")
+    if start == -1 or end <= start:
+        return []
+    try:
+        items = json.loads(text_only[start : end + 1])
+    except (json.JSONDecodeError, ValueError):
+        return []
+    if not isinstance(items, list):
+        return []
+    by_url = {r["url"]: r for r in results}
+    facts: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in items[:MAX_EXTRACTED_FACTS]:
+        if not isinstance(item, dict):
+            continue
+        entity = str(item.get("entity") or "").strip()
+        metric = str(item.get("metric") or "").strip().lower()
+        source_url = str(item.get("source_url") or "").strip()
+        source = by_url.get(source_url)
+        if not entity or not metric or source is None:
+            continue  # a fact must name an entity+metric and cite a real result URL
+        entity_norm = normalize_entity(entity)
+        period = str(item.get("period") or "").strip()
+        key = (entity_norm, metric, period)
+        if not entity_norm or key in seen:
+            continue
+        seen.add(key)
+        facts.append(
+            {
+                "entity": entity[:200],
+                "entity_norm": entity_norm,
+                "metric": metric[:80],
+                "period": period[:40],
+                "value": _coerce_value(item.get("value")),
+                "unit": str(item.get("unit") or "")[:80],
+                "value_text": (str(item.get("value_text")) if item.get("value_text") else None),
+                "source_url": source["url"],
+                "domain": source["domain"],
+                "trust": source["trust"],
+            }
+        )
+    return facts
+
+
+async def _extract_web_facts(
+    query: str, results: list[dict[str, Any]], router: Any
+) -> list[dict[str, Any]]:
+    """Distil structured facts from search results via the cheap LLM tier."""
+    if router is None:
+        try:
+            from model_router.router import RouterClient
+
+            router = RouterClient()
+        except Exception:  # noqa: BLE001 — no router => no enrichment, not a crash
+            return []
+    context = "\n\n".join(
+        f"URL: {r['url']}\nDOMAIN: {r['domain']} (trust {r['trust']})\n{r['snippet']}"
+        for r in results[:6]
+    )
+    messages = [
+        {"role": "system", "content": _FACT_EXTRACTION_SYS},
+        {"role": "user", "content": f"Query: {query}\n\nResults:\n{context}"},
+    ]
+    try:
+        response = await router.chat("web_search", messages)
+    except Exception:  # noqa: BLE001
+        return []
+    return parse_extracted_facts(getattr(response, "text", "") or "", results)
+
+
+async def _write_web_facts(
+    factory: async_sessionmaker[AsyncSession],
+    facts: list[dict[str, Any]],
+    query_norm: str,
+) -> None:
+    now = datetime.now(UTC)
+    async with factory() as session:
+        await session.execute(
+            _WEB_FACTS_UPSERT_SQL,
+            [{**fact, "query_norm": query_norm, "retrieved_at": now} for fact in facts],
+        )
+        await session.commit()
+
+
 async def web_search(
     query: str,
     *,
@@ -566,6 +711,16 @@ async def web_search(
             await _write_cache(factory, query_norm, results)
         except (SQLAlchemyError, OSError) as error:
             log.warning("web_cache_write_failed", error=str(error)[:200])
+        # Enrichment (T-045): distil structured facts into web_facts so a repeat
+        # question is answered from the DB (sql_query) instead of re-searching.
+        # Best-effort — extraction/write failures must never break the search.
+        try:
+            facts = await _extract_web_facts(query, results, router)
+            if facts:
+                await _write_web_facts(factory, facts, query_norm)
+                log.info("web_facts_enriched", count=len(facts), query=query_norm[:80])
+        except Exception as error:  # noqa: BLE001 — enrichment is never fatal
+            log.warning("web_facts_enrich_failed", error=str(error)[:200])
         return {
             "results": results,
             "citations": [_citation(r) for r in results],

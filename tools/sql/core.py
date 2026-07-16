@@ -32,7 +32,14 @@ STATEMENT_TIMEOUT_MS = 10_000
 MAX_CELL_CHARS = 500
 
 # Tables the agent may know about (grants for app_ro match this list).
-KNOWN_TABLES = ("latest_facts", "companies", "filings", "financial_facts", "filing_sections")
+KNOWN_TABLES = (
+    "latest_facts",
+    "companies",
+    "filings",
+    "financial_facts",
+    "filing_sections",
+    "web_facts",
+)
 
 _TABLE_DESCRIPTIONS = {
     "latest_facts": (
@@ -43,6 +50,12 @@ _TABLE_DESCRIPTIONS = {
     "filings": "Filing metadata (form_type, period_end, filed_at, source_url)",
     "financial_facts": "Raw facts incl. superseded restatements — prefer latest_facts",
     "filing_sections": "Narrative sections of filings (risk_factors, mdna) — full text",
+    "web_facts": (
+        "Web-sourced facts cached from prior web_search runs (entity_norm, metric, period, "
+        "value, unit, value_text, source_url, domain, trust). For companies NOT in the "
+        "filings corpus. Lower trust than filings — cite as [web: <domain>]. Check here "
+        "before calling web_search to avoid re-searching."
+    ),
 }
 
 _COLUMN_DESCRIPTIONS = {
@@ -73,6 +86,11 @@ EXAMPLE_QUERIES = [
     "(array_agg(value ORDER BY period_end DESC))[1] AS month_end_close "
     "FROM latest_facts WHERE ticker = 'SBER' AND metric = 'close_price' "
     "GROUP BY 1 ORDER BY 1",
+    # A company not in the filings corpus may have web-sourced facts cached from a
+    # prior web_search — check web_facts before searching the web again.
+    "SELECT entity, metric, period, value, unit, value_text, domain, trust, source_url "
+    "FROM web_facts WHERE entity_norm ILIKE '%amd%' AND metric = 'revenue' "
+    "ORDER BY period DESC",
 ]
 
 _METRIC_EQ = re.compile(r"metric\s*=\s*'([^']+)'", re.IGNORECASE)
@@ -85,8 +103,9 @@ def _schema_excerpt() -> str:
         "Tables: latest_facts (MAIN entry: company_id, ticker, company_name, metric, "
         "value, unit, period_start, period_end, fiscal_year, fiscal_period, standard, "
         "form_type, filed_at, source_url); companies; filings; financial_facts (raw, "
-        "prefer latest_facts); filing_sections. Call schema_introspect for details "
-        "and example queries."
+        "prefer latest_facts); filing_sections; web_facts (web-sourced values for "
+        "companies not in filings — entity_norm, metric, period, value, unit, trust). "
+        "Call schema_introspect for details and example queries."
     )
 
 
