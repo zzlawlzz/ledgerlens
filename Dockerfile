@@ -3,12 +3,17 @@
 
 FROM python:3.12-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+# UV_HTTP_TIMEOUT raised from the 30s default: dependency downloads run over a
+# slow RU link, where the odd package (e.g. google-auth) otherwise times out and
+# fails the whole layer whenever uv.lock changes and it must re-fetch everything.
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_HTTP_TIMEOUT=180
 WORKDIR /app
 
-# Dependency layer — cached until pyproject/uv.lock change.
+# Dependency layer — cached until pyproject/uv.lock change. The uv download cache
+# is a persistent buildkit cache mount, so a lock change (or a timed-out retry on
+# the slow RU link) re-uses already-fetched wheels instead of re-downloading all.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-install-project --no-dev
 
 # Application layer.
 COPY common ./common
@@ -26,7 +31,7 @@ COPY db ./db
 COPY alembic.ini ./
 COPY scripts ./scripts
 COPY README.md ./
-RUN uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
 FROM python:3.12-slim
 RUN groupadd --system app && useradd --system --gid app --create-home app
