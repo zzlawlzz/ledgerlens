@@ -22,6 +22,14 @@ source**, streamed reasoning-first into the UI (AG-UI).
   visibly, in the stream.
 - **Cites** every narrative claim back to the exact SEC/MOEX source chunk; a
   groundedness guardrail strips ungrounded synthesis.
+- **Reaches the web when the corpus can't answer** — a trust-tiered `web_search`
+  (audited filing > official IR/wire > unknown blog) fills gaps for companies or
+  figures not in EDGAR, cites each web fact with its domain and confidence, and
+  **enriches the database** with what it finds so the same question is answered
+  from the DB next time — no repeat search.
+- **Knows when to stop** — bounded web searches and fail-fast on genuinely
+  unavailable data (a private company, a forward forecast): it says so honestly
+  instead of looping.
 
 ## Architecture at a glance
 
@@ -34,22 +42,25 @@ flowchart TB
     SQL["sql_query / schema_introspect<br/>(MCP server)"]
     RAG["rag_search<br/>(MCP server)"]
     ENR["price_enrich<br/>(MCP server)"]
+    WEB["web_search<br/>(MCP server · trust-tiered)"]
     ROUTER["Model Router (tiered)<br/>local CPU ⇄ cloud API"]
-    PG[("Postgres<br/>facts + pgvector")]
+    PG[("Postgres<br/>facts · web_facts · pgvector")]
     QD[("Qdrant<br/>narrative vectors")]
     ADP["Source adapters<br/>EDGAR · MOEX ISS"]
+    WEBSRC(["Open web<br/>Tavily / registries"])
     OBS["Grafana · Eval-in-CI"]
 
     UI <--> ORCH
     ORCH -- A2A --> W1
     ORCH -- A2A --> W2
-    W1 --> SQL & RAG & ENR
-    W2 --> SQL & RAG & ENR
+    W1 --> SQL & RAG & ENR & WEB
+    W2 --> SQL & RAG & ENR & WEB
     W1 -. LLM calls .-> ROUTER
     ORCH -. LLM calls .-> ROUTER
     SQL --> PG
     RAG --> QD
     ENR --> PG
+    WEB --> PG & WEBSRC
     ADP --> PG & QD
     ORCH -. trace .-> OBS
 ```
@@ -60,13 +71,12 @@ Full layer/component breakdown: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | Capability | What you see | Proof |
 |---|---|---|
+| **Conversational UI** | A chat interface with a live narrator ("searching the web…"), an animated plan/step timeline, a rendered markdown answer, cost/token summary, dark/light themes and EN/RU. | [live demo](https://ledgerlens.space/app/) |
 | **Streamed plan** | The orchestrator's plan and each step appear live as the run executes (AG-UI). | [demo/self_correction.md](demo/self_correction.md) |
 | **Self-correction** | A step that returns nothing gets re-planned and retried, in view. | ![replan](demo/screenshots/self_correction_replan.png) |
 | **Citations** | Narrative answers carry `sec.gov` / MOEX source links per claim. | ![worker](demo/screenshots/self_correction_worker.png) |
+| **Trust-tiered web search** | When a company or figure isn't in the corpus, the agent searches the web, badges each source's trust, and caches the facts it finds so the next run answers from the DB. | [live demo](https://ledgerlens.space/app/) |
 | **Observability** | Latency, cost, local-vs-cloud split and eval quality in Grafana. | ![grafana](demo/screenshots/grafana_operations.png) |
-
-> Static screenshots today; animated GIFs of the three flows are tracked as a
-> follow-up in T-039 (presentation site).
 
 ## Quick start (full stack + UI)
 
@@ -107,6 +117,11 @@ frontend uses `POST /agui` (the AG-UI protocol). Self-correction scenario:
 - **Tiered LLM routing:** cheap/local CPU inference for classify/extract/guard,
   cloud API (DeepSeek `flash`/`pro`) for planning & synthesis, provider-agnostic
   behind one interface.
+- **Web search with trust + enrichment:** a `web_search` MCP tool reaches the
+  open web (Tavily API / registries) only when SQL/RAG can't answer, scores each
+  source by a domain-trust tier, cross-checks when no single source is trusted,
+  and writes the facts it distils into `web_facts` so repeats hit the DB, not the
+  network.
 - **Eval-in-CI:** a 41-case golden set gated in GitHub Actions
   (`.github/workflows/eval.yml`) with thresholds in
   `config/eval-thresholds.yaml`.
@@ -158,16 +173,32 @@ primary source before relying on them.
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Phased plan, principles, ADRs, risks, Definition of Done |
 | [CONTRACTS.md](CONTRACTS.md) | Technical contracts: stack, DDL, metric dictionary, tool schemas, budgets |
 | [CHANGELOG.md](CHANGELOG.md) | Release history by gate (G1…G4) |
-| [BACKLOG.md](BACKLOG.md) | Developer backlog: tasks T-001…T-041 with specs and acceptance |
+| [BACKLOG.md](BACKLOG.md) | Developer backlog: tasks T-001…T-046 with specs and acceptance |
 
 ## Project status
 
-Gates **G1 ✅ G2 ✅ G3 ✅**. Core tasks T-001…T-034 and T-041 are delivered.
-The remaining phase-4 work — Telegram alerting (T-035), public-demo hardening
-(T-036), benchmarks (T-037), presentation site (T-039) and the v1.0 release
-(T-040 / G4) — is in progress, with live/hardware-gated steps outstanding.
-See [Known limitations](#known-limitations) below for what is intentionally out
-of scope or still hardware-gated.
+Gates **G1 ✅ G2 ✅ G3 ✅**. Core tasks T-001…T-034 and T-041 are delivered, and
+the demo now runs on the current topology — a **workstation backend** behind a
+thin **VPS door** (DNS-only + Let's Encrypt, no CDN proxy in the SSE path) with
+the **frontend on GitHub Pages**.
+
+Recently delivered on top of the core:
+
+- **Conversational demo UI** (T-042) — chat interface, live narrator, animated
+  plan/step timeline, markdown answers, cost/token summary, dark/light + EN/RU.
+- **Trust-tiered web search** (T-043) — fills gaps the corpus can't answer, with
+  a domain-trust model and a durable cache.
+- **Web enrichment of the DB** (T-045) — facts found on the web are distilled
+  into `web_facts` and surfaced to the agent's SQL path, so a repeat question is
+  answered from the DB instead of re-searching.
+- **Robustness** (T-046) — bounded web searches and fail-fast on genuinely
+  unavailable data, so the agent degrades honestly instead of looping.
+- **Owner notifications** (T-044) — each public-demo run reports its cost/tokens
+  to the owner's Telegram (egressing via the VPS).
+
+The v1.0 release (T-040 / G4) and some hardware-gated steps (local-model
+inference, T-037 benchmarks) remain. See [Known limitations](#known-limitations)
+for what is intentionally out of scope or still hardware-gated.
 
 ## Known limitations
 
