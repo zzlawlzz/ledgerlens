@@ -233,9 +233,24 @@ CREATE TABLE prices (                  -- опционально (price_enrich)
   currency TEXT NOT NULL, source TEXT NOT NULL,
   PRIMARY KEY (company_id, trade_date, source)
 );
+CREATE TABLE web_documents (           -- web_search кэш результатов (T-043)
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  query_norm TEXT NOT NULL, url TEXT NOT NULL, domain TEXT NOT NULL,
+  title TEXT, snippet TEXT, trust TEXT NOT NULL,   -- high|medium|low
+  retrieved_at TIMESTAMPTZ NOT NULL DEFAULT now(), meta JSONB NOT NULL DEFAULT '{}',
+  UNIQUE (query_norm, url)
+);
+CREATE TABLE web_facts (               -- структурные веб-факты для SQL-пути (T-045)
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  entity TEXT NOT NULL, entity_norm TEXT NOT NULL, metric TEXT NOT NULL,
+  period TEXT NOT NULL DEFAULT '', value NUMERIC(28,4), unit TEXT NOT NULL DEFAULT '',
+  value_text TEXT, source_url TEXT NOT NULL, domain TEXT NOT NULL, trust TEXT NOT NULL,
+  query_norm TEXT, retrieved_at TIMESTAMPTZ NOT NULL DEFAULT now(), meta JSONB NOT NULL DEFAULT '{}',
+  UNIQUE (entity_norm, metric, period)  -- отдельно от аудируемой financial_facts
+);
 ```
 
-Роли БД: `app` (rw) и `app_ro` (только SELECT на домен-таблицы и `latest_facts`) — sql_query работает **только** под `app_ro`.
+Роли БД: `app` (rw) и `app_ro` (только SELECT на домен-таблицы, `latest_facts` и `web_facts`) — sql_query работает **только** под `app_ro`.
 
 ---
 
@@ -307,6 +322,11 @@ DTO (`common/models.py`, pydantic): `Company`, `Filing`, `FinancialFact`, `Filin
 
 **price_enrich** (опция)
 - Вход: `{"ticker": str, "date_from": date, "date_to": date}`; выход: `{"series": [{"date","close","currency"}], "source": str, "cached": bool}`. Только EOD, сперва кэш (`prices`), затем провайдер.
+
+**web_search** (fallback, T-043/T-045/T-046) — вызывается ТОЛЬКО когда SQL/RAG не отвечают.
+- Вход: `{"query": str<=400}`
+- Выход: `{"results": [{title,url,domain,snippet,trust}], "citations": [{section:domain, source_url, trust, source_type:"web"}], "trust_summary": {level:"high|medium|low|none", note, sources}, "source": "db|web|deepseek", "cached": bool}`. Ошибка — observation `{"error","retryable"}`, не исключение.
+- Кэш: сперва `web_documents` (по нормализованному запросу, TTL из `config/web_search.yaml`) → Search-API (Tavily default) → скрап → DeepSeek. Извлечённые структурные факты пишутся в `web_facts` (виден `app_ro` через sql_query). Число вызовов на шаг ограничено (`MAX_WEB_SEARCHES_PER_STEP`).
 
 Общие требования: строгая JSON-схема параметров; идемпотентность чтения; таймауты; latency и статус каждого вызова пишутся в `tool_calls`.
 

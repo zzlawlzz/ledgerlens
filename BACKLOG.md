@@ -970,6 +970,29 @@
 
 ---
 
+### T-044 · Трекинг запросов демо → Telegram владельца [done 2026-07-16 `1639bd7`]
+**Зависимости:** T-035, T-036 · **Оценка:** M
+
+**Цель:** владелец видит каждый запрос публичного демо в Telegram (контроль активности и расхода). api.telegram.org заблокирован из РФ → egress через дружественную ноду.
+
+**Сделано:** `orchestrator/demo_notify.py` (форматтер + gated non-fatal dispatch через `send_alert`) + хук в `_execute_run` finally (после `record_cost`); `DemoLimiter.daily_report()` для дневного итога. Per-run пинг: вопрос/статус/cost/токены/латентность + `today: $X / $cap`. Gated на `budget_profile==demo && DEMO_NOTIFY_TELEGRAM && telegram creds` → dev/eval инертно. Egress — сайдкар `tg-egress` (compose profile `demo`, `deploy/tg-egress/*`) держит SOCKS5 `ssh -D` через FI-VPS (без изменений на VPS); `httpx[socks]`. Dockerfile: `UV_HTTP_TIMEOUT=180` + uv-cache mount. 10 юнит-тестов; live-доставлено в chat владельца.
+
+### T-045 · Веб-обогащение БД структурными фактами [done 2026-07-16 `c53c66e`]
+**Зависимости:** T-043 · **Оценка:** M
+
+**Цель:** искоренить повторные веб-поиски — кэш `web_documents` ключевался по точной строке запроса, а воркер перефразирует под-запросы каждый раз → сеть. Обогащать пайплайн ФАКТАМИ.
+
+**Сделано:** миграция `006_web_facts` (entity_norm/metric/period/value/unit/trust/source_url, отдельно от `financial_facts`, app_ro+grafana_ro SELECT) ← извлечение структурных фактов из web-результатов дешёвым LLM-тиром (читает Tavily `raw_content`; только факты с числовым value; domain/trust из верифицированного результата) → подключено к SQL-пути (`tools/sql/core.py` KNOWN_TABLES/schema_introspect/пример fuzzy-метрика) + worker prompt v12 (проверять `web_facts` до поиска). Live: холодный «NVIDIA vs AMD» обогатил web_facts → тёплый тот же вопрос = **0 web_search**, ответ из БД. 8 юнит-тестов. Gate-safe (web_facts пуст в eval).
+
+### T-046 · Робастность на необычных запросах (fail-fast) [done 2026-07-16 `251252e`]
+**Зависимости:** T-043, T-045 · **Оценка:** S
+
+**Цель:** на запросе про частную/непубличную компанию (Биокад-прогноз) воркер делал 17 near-duplicate поисков → budget_exceeded, «беспомощен».
+
+**Сделано:** детерминированный per-step кап `MAX_WEB_SEARCHES_PER_STEP=3` в `react_worker._build_tools` (после капа tool отказывает + велит заключать); prompt v13 rule-3 fail-fast (частная компания/forecast = genuinely unavailable → стоп→NO_DATA); фикс утечки Tavily `raw_content` воркеру (раздувал токены). Live: Биокад-прогноз теперь run_finished, честный ответ + находит реальную цифру (выручка-2021 из росс. реестров). Юнит-тест капа. Оркестратор уже мапит budget_exceeded→done (не реплания).
+
+---
+
 ## 7. Правила ведения бэклога
 
 - Статусы задач вести прямо здесь: `[ ]` → `[wip]` → `[done <дата> <commit>]` в сводной таблице (колонку добавить при старте работ).
