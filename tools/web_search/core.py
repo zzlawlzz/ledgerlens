@@ -64,6 +64,9 @@ DEFAULT_DAILY_LIMIT = 60
 MAX_QUERY_CHARS = 400
 SNIPPET_MAX = 500
 TITLE_MAX = 200
+# Fact extraction reads richer page content than the short SERP snippet — a search
+# snippet rarely states an absolute figure ("revenue up 14%"), the page body does.
+EXTRACT_CONTENT_MAX = 2200
 
 # Fallback trust tiers if config/web_search.yaml is missing. Matched as domain
 # suffixes: an entry "gov" matches "sec.gov"; "reuters.com" matches
@@ -257,6 +260,10 @@ def parse_tavily(
                 "url": url,
                 "domain": domain,
                 "snippet": str(item.get("content") or "")[:SNIPPET_MAX],
+                # raw_content (full page text) feeds fact extraction; not cached.
+                "raw_content": str(item.get("raw_content") or item.get("content") or "")[
+                    :EXTRACT_CONTENT_MAX
+                ],
                 "trust": trust_for_domain(domain, tiers),
             }
         )
@@ -385,7 +392,14 @@ async def _tavily_search(
         response = await client.post(
             TAVILY_URL,
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"query": query, "max_results": max_results, "search_depth": "basic"},
+            json={
+                "query": query,
+                "max_results": max_results,
+                "search_depth": "basic",
+                # Full page text so fact extraction sees the actual figures, not
+                # just the intro-level SERP snippet.
+                "include_raw_content": True,
+            },
         )
     if response.status_code != 200:
         raise SourceUnavailableError(f"tavily returned HTTP {response.status_code}")
@@ -596,6 +610,13 @@ def parse_extracted_facts(raw: str, results: list[dict[str, Any]]) -> list[dict[
         key = (entity_norm, metric, period)
         if not entity_norm or key in seen:
             continue
+        value = _coerce_value(item.get("value"))
+        value_text = str(item.get("value_text")) if item.get("value_text") else None
+        # Store only facts with a real absolute number. A relative-only figure
+        # ("revenue up 34%") or a hollow (entity, metric, period) row helps no
+        # future question, so skip it rather than pollute the cache.
+        if value is None:
+            continue
         seen.add(key)
         facts.append(
             {
@@ -603,9 +624,9 @@ def parse_extracted_facts(raw: str, results: list[dict[str, Any]]) -> list[dict[
                 "entity_norm": entity_norm,
                 "metric": metric[:80],
                 "period": period[:40],
-                "value": _coerce_value(item.get("value")),
+                "value": value,
                 "unit": str(item.get("unit") or "")[:80],
-                "value_text": (str(item.get("value_text")) if item.get("value_text") else None),
+                "value_text": value_text,
                 "source_url": source["url"],
                 "domain": source["domain"],
                 "trust": source["trust"],
@@ -626,7 +647,8 @@ async def _extract_web_facts(
         except Exception:  # noqa: BLE001 — no router => no enrichment, not a crash
             return []
     context = "\n\n".join(
-        f"URL: {r['url']}\nDOMAIN: {r['domain']} (trust {r['trust']})\n{r['snippet']}"
+        f"URL: {r['url']}\nDOMAIN: {r['domain']} (trust {r['trust']})\n"
+        f"{(r.get('raw_content') or r.get('snippet') or '')[:EXTRACT_CONTENT_MAX]}"
         for r in results[:6]
     )
     messages = [

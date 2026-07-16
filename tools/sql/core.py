@@ -87,9 +87,10 @@ EXAMPLE_QUERIES = [
     "FROM latest_facts WHERE ticker = 'SBER' AND metric = 'close_price' "
     "GROUP BY 1 ORDER BY 1",
     # A company not in the filings corpus may have web-sourced facts cached from a
-    # prior web_search — check web_facts before searching the web again.
+    # prior web_search — check web_facts before searching the web again. Metric
+    # names there are free-form (e.g. 'annual_revenue'), so match them fuzzily.
     "SELECT entity, metric, period, value, unit, value_text, domain, trust, source_url "
-    "FROM web_facts WHERE entity_norm ILIKE '%amd%' AND metric = 'revenue' "
+    "FROM web_facts WHERE entity_norm ILIKE '%amd%' AND metric ILIKE '%revenue%' "
     "ORDER BY period DESC",
 ]
 

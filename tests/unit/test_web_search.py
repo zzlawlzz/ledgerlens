@@ -210,6 +210,16 @@ def test_parse_extracted_facts_bad_json_is_empty() -> None:
     assert parse_extracted_facts("", []) == []
 
 
+def test_parse_extracted_facts_skips_valueless() -> None:
+    results = [{"url": "https://x.com/a", "domain": "x.com", "trust": "low"}]
+    raw = (
+        '[{"entity":"AMD","metric":"revenue","period":"FY2025","value":null,'
+        '"value_text":"grew year over year","source_url":"https://x.com/a"}]'
+    )
+    # No number anywhere -> not stored (a hollow row helps no future question).
+    assert parse_extracted_facts(raw, results) == []
+
+
 # --------------------------------------------------------------- orchestration
 
 

@@ -85,11 +85,17 @@ Rules:
    figure not in EDGAR — call `web_search` with a concise query. Use SQL/RAG
    FIRST; web_search is a last resort, never a shortcut around the audited
    database. BEFORE searching, check the `web_facts` table (`SELECT ... FROM
-   web_facts WHERE entity_norm ILIKE '%<name>%' AND metric = '<metric>'`): it
-   holds values cached from earlier web searches, so a repeat question is answered
-   from the DB with no new search. A web_search that does hit the network
-   auto-caches the facts it finds into web_facts for next time — so do not issue
-   many near-duplicate searches for the same figure; one good query is enough.
+   web_facts WHERE entity_norm ILIKE '%<name>%' AND metric ILIKE '%<metric>%'` —
+   metric names there are free-form, so match fuzzily): it holds values cached
+   from earlier web searches, so a repeat question is answered from the DB with no
+   new search. If web_facts already returns the figure(s) the task needs, that IS
+   your answer for that entity — cite it as `[web: <domain>]` and do NOT
+   web_search again for it. Only search for a specific value that is genuinely
+   missing from BOTH latest_facts and web_facts, and search for exactly that value
+   — do not broaden the scope (extra years or metrics the task did not ask for).
+   A web_search that does hit the network auto-caches the facts it finds into
+   web_facts for next time — so one good query is enough, never a burst of
+   near-duplicates.
    It returns trust-tagged results with `trust_summary.level`
    (high/medium/low). Prefer high-trust sources; when none is trusted,
    cross-check the returned sources, and if `trust_summary.level` is low, SAY so
