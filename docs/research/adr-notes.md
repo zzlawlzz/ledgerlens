@@ -25,7 +25,7 @@
 ## 5. Локальные CPU-модели (ADR-3, дефолт до T-037)
 
 - Ollama актуален (v0.30.x, июнь 2026). Линейка Qwen обновилась: **qwen3.5** — sparse-MoE + Gated Delta Networks, 256K ctx, мультимодальная; варианты 0.8b/2b/4b/9b/27b/35b/122b. **Дефолт-кандидат сменён: qwen3:30b-a3b → qwen3.5:27b** (17 ГБ Q4, влезает с запасом); лёгкий fallback — qwen3.5:4b (3.4 ГБ).
-- Кандидаты CPU-бенчмарка T-037 на домашней ноде (2×EPYC 7551, 128 ГБ): qwen3.5:27b, qwen3:30b-a3b (прежний дефолт, для сравнения), qwen3.5:122b (81 ГБ — в RAM влезает, вопрос tok/s решит бенчмарк).
+- Кандидаты CPU-бенчмарка T-037 на локальной ноде (после вывода EPYC-ноды 2026-07 это воркстейшн: Ryzen 9 5900X, 12C/24T, 64 ГБ): qwen3.5:27b, qwen3:30b-a3b (прежний дефолт, для сравнения). qwen3.5:122b (81 ГБ) в 64 ГБ RAM **не влезает** — снят с кандидатов.
 - Источники: [ollama.com/library/qwen3.5](https://ollama.com/library/qwen3.5), [ollama.com/library/qwen3](https://ollama.com/library/qwen3), [Ollama June 2026 update](https://www.promptquorum.com/local-llms/top-open-source-models-ollama), [Best Ollama Models 2026](https://www.morphllm.com/best-ollama-models).
 
 ## 5-бис. Доступность внешних API из РФ

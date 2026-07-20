@@ -29,6 +29,9 @@ thresholds:
 # run 29297896263 faithfulness=0.985 / citation=1.0, run 29303631947
 # faithfulness=1.0 / citation=1.0 (both 41 cases, gate exit 0). Acceptance
 # criterion "≥0.7 stable over ≥2 consecutive full runs" met → Q-16 closed.
+# (Those runs executed on the then-current self-hosted EPYC runner; that node
+# is retired as of 2026-07 — the self-hosted runner now lives on the project
+# workstation, see .github/workflows/eval.yml.)
 non_blocking: []
 
 # Judge calls (task_class=judge) are metered against this cap; the harness

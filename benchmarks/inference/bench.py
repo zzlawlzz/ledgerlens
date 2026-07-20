@@ -16,12 +16,12 @@ Two runner families, matching ``config/router.yaml`` tiers:
   (a) **cloud API** — ``deepseek-v4-flash`` (cloud_cheap) and ``deepseek-v4-pro``
       (cloud_strong). Reproducible anywhere with ``DEEPSEEK_API_KEY``; this is
       the default run.
-  (b) **local CPU** — ollama models on the home 2×EPYC node, named with
-      ``--local-models qwen3.5:27b,llama3.2:4b`` (requires ``OLLAMA_BASE_URL``).
-      Left to the home node — this dev box does not host the CPU candidates.
+  (b) **local CPU** — ollama models on the project workstation (Ryzen 9
+      5900X, 12C/24T, 64 GB), named with ``--local-models
+      qwen3.5:27b,llama3.2:4b`` (requires ``OLLAMA_BASE_URL``).
 
 Reproduce the API part with ``make bench-inference`` (or add
-``BENCH_ARGS='--local-models qwen3.5:27b,llama3.2:4b'`` on the EPYC node).
+``BENCH_ARGS='--local-models qwen3.5:27b,llama3.2:4b'`` for the local column).
 GPU (vLLM) inference is **not** measured — excluded by owner decision Q-07;
 the report says so without quoting anyone else's numbers as our own.
 """
@@ -430,7 +430,7 @@ def write_report(summaries: list[ModelSummary], *, repeats: int, judged: bool) -
     )
     lines.append(
         f"- **Hardware:** {platform.platform()}; {os.cpu_count()} logical CPUs. "
-        "_(Replace with the EPYC node's spec when the local candidates are run.)_\n"
+        "_(The local candidates run on the same workstation.)_\n"
     )
 
     lines.append("## Results\n")
@@ -478,7 +478,7 @@ def write_report(summaries: list[ModelSummary], *, repeats: int, judged: bool) -
     lines.append(
         "- **No GPU / vLLM column (Q-07).** GPU inference was excluded by owner "
         "decision; we do not publish anyone else's GPU throughput as our own. "
-        "The local column is CPU-only (2×EPYC 7551), API column is the paid tier."
+        "The local column is CPU-only (the project workstation), API column is the paid tier."
     )
     lines.append(
         "- **Local $ is an estimate, not a meter.** Ollama calls cost $0 in the "

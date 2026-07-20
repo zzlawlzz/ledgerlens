@@ -85,7 +85,9 @@ failure to `/api/chat`); it does not retry a run that came back but reported
 ## Eval in CI (T-030)
 
 `.github/workflows/eval.yml` runs `eval.run --profile ci` on: manual dispatch,
-a nightly schedule, and any PR with the `eval` label attached. It never
+a nightly schedule (paused as of 2026-07-20 until the self-hosted
+`ledgerlens-workstation` runner is registered — the former EPYC runner is
+decommissioned), and any PR with the `eval` label attached. It never
 touches EDGAR — it restores the frozen 10-ticker demo corpus (T-028) from a
 `pg_dump` + Qdrant snapshot artifact produced by the separate, manual
 `eval-snapshot.yml` workflow (re-run that one only when the demo corpus or

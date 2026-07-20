@@ -1,8 +1,9 @@
+# [ARCHIVED — two-node deploy decommissioned 2026-07; see README.md here.]
 # Home-node MCP exposure overlay (T-031, gate G3). Publishes the MCP tool
 # servers on the AmneziaWG tunnel address (10.9.0.1 = home node in the
 # 10.9.0.0/24 mesh) so the remote VPS worker can reach them over the encrypted
-# link — and ONLY there (not on 0.0.0.0). Overrides the demo overlay's
-# `!override []`, so pass it after deploy/demo/compose.epyc.yml.
+# link — and ONLY there (not on 0.0.0.0). Pass it after any overlay that
+# `!override`s the same ports.
 services:
   mcp-sql:
     ports: !override ["10.9.0.1:8765:8765"]

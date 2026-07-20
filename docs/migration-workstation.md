@@ -100,8 +100,14 @@ or embeddings anyway.
     `RUN_FINISHED` was rejected with "Cannot send 'RUN_FINISHED' while tool calls
     are still active" — a red banner over an otherwise-usable partial answer. The
     adapter now closes every dangling tool call before the terminal event.
-- **Phase 5 (retire EPYC + docs): in progress** — ARCHITECTURE/README/site being
-  reworked to the new topology; EPYC artifacts retired.
+- **Phase 5 (retire EPYC + docs): done (2026-07-20)** — ARCHITECTURE/README/site
+  reworked to the new topology; EPYC artifacts removed from the repo
+  (`deploy/demo/compose.epyc.yml`, `deploy/demo/compose.llmproxy.yml`); the
+  two-node runbook (`deploy/worker-node/`) archived as a design capability; the
+  eval workflow retargeted from the `ledgerlens-epyc` runner to a
+  `ledgerlens-workstation` label (nightly schedule paused until that runner
+  service is registered on the workstation) and the `epyc-home` runner
+  deregistered from the repo.
 
 ## Retires
 

@@ -19,14 +19,14 @@ profiles:
     max_cost_usd_per_run: 0.50
     max_tokens_per_run: 200000
     # 600 on the dev box: local-tier classify/extract on a laptop CPU eat
-    # ~15-60s per call; the demo profile (home node, 2xEPYC) stays tight.
+    # ~15-60s per call; the demo profile (workstation node) is sized below.
     wall_clock_s_per_run: 600
     runs_per_hour_per_ip: null   # unlimited in dev
   demo:
-    # The public demo now runs on the workstation (migration 2026-07; the EPYC
-    # node is retired). Its LLM tier is DeepSeek cloud and its RAG embeddings are
-    # CPU-bound (fastembed) on this box — heavier and slower than the old 2xEPYC
-    # home node, so a multi-company / 10-K-narrative query needs real head-room to
+    # The public demo runs on the workstation (Ryzen 9 5900X, 64 GB; the former
+    # EPYC home node is retired). Its LLM tier is DeepSeek cloud and its RAG
+    # embeddings are CPU-bound (fastembed) on this box, so a multi-company /
+    # 10-K-narrative query needs real head-room to
     # finish instead of tripping budget_exceeded mid-step. These limits are sized
     # for that, and are fully decoupled from the eval gate (eval runs under `dev`).
     max_plan_steps: 8

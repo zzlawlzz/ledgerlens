@@ -1,11 +1,19 @@
-# Remote worker node (T-031, gate G3) — as-built runbook
+# Remote worker node (T-031, gate G3) — as-built runbook **[ARCHIVED]**
+
+> **Status (2026-07-20): decommissioned.** The two-node deployment described
+> here ran live for gate G3 (verified 2026-07-13) on the former EPYC home node,
+> which is retired; the whole stack now runs single-node on the project
+> workstation. This runbook is kept as the documented **design capability** for
+> A2A multi-node scale-out (`config/workers.yaml` still accepts extra worker
+> entries) — the referenced hosts, tunnel and `compose.epyc.yml` overlay no
+> longer exist.
 
 The second LedgerLens compute node runs the ReAct **worker** as an A2A service on
 a VPS; its tools live on the home node and are reached over MCP through an
 encrypted AmneziaWG tunnel. The worker holds no data — only the A2A token and the
 cloud LLM key.
 
-**Live topology (verified 2026-07-13):**
+**Topology as it ran (G3, 2026-07-13):**
 - **Home node** = EPYC (`192.168.1.115`, behind NAT/DPI): runs the orchestrator +
   Postgres/Qdrant/MCP (the `lldemo` demo stack), AmneziaWG address **10.9.0.1**.
 - **VPS** = `104.238.24.196` (Ubuntu 22.04, KVM, 1 vCPU / 957 MB): runs only the
@@ -114,10 +122,13 @@ Bring the demo stack up with the two extra overlays:
 
 ```bash
 docker compose -p lldemo -f docker-compose.yml \
-  -f deploy/demo/docker-compose.demo.yml -f deploy/demo/compose.epyc.yml \
+  -f deploy/demo/docker-compose.demo.yml \
   -f deploy/worker-node/compose.mcp-awg.yml \
   -f deploy/worker-node/compose.orchestrator-vps.yml up -d --force-recreate mcp-sql mcp-rag mcp-enrich app
 ```
+
+_(As-run, the command also carried the since-removed `deploy/demo/compose.epyc.yml`
+port-remap overlay for co-existence with the eval runner on the same node.)_
 
 - `compose.mcp-awg.yml` publishes the MCP servers on `10.9.0.1:8765-8767` only.
 - `compose.orchestrator-vps.yml` mounts `workers.vps.yaml` over the baked-in

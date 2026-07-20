@@ -57,10 +57,21 @@ Polish & packaging (Phase 4). In progress.
   forecast) — the agent concedes honestly instead of looping until it exhausts
   its budget.
 
+### Changed
+- **EPYC node fully retired (2026-07-20).** The whole stack — backend, demo and
+  the self-hosted eval runner — is single-node on the project workstation
+  (plus the thin VPS door for the public API). EPYC-era artifacts removed
+  (`deploy/demo/compose.epyc.yml`, `deploy/demo/compose.llmproxy.yml`); the
+  two-node runbook (`deploy/worker-node/`) is archived as the documented A2A
+  multi-node design capability. The eval workflow now targets a
+  `ledgerlens-workstation` runner label with a port scheme that coexists with
+  the always-on demo stack (`docker-compose.ci.yml`); its nightly schedule is
+  paused until the workstation runner service is registered.
+
 ### In progress
 - **T-037**: local model inference part (2–3 Ollama candidates) + ADR-3 close-out
-  — pending the local tier (workstation GPU/CPU) being wired up in migration
-  Phase 2; the demo currently runs entirely on the cloud LLM tier.
+  — runs on the workstation itself now that the EPYC node is retired; the demo
+  currently runs entirely on the cloud LLM tier.
 - **T-040** (gate G4): the v1.0 clean-machine release — a tagged release, GitHub
   Release notes and branch protection remain.
 
