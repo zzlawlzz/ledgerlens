@@ -22,7 +22,7 @@ const I18N = {
     how_lede:
       "The signature scenario: a step returns nothing, the orchestrator re-plans it in view, and the retry produces a cited answer. Reasoning streams first (AG-UI), so you see the analyst think.",
     how_cap:
-      "Left: an empty step is re-planned live. Right: the retried worker answers with per-claim sec.gov citations.",
+      "Left: an empty step is re-planned live and the data boundary is conceded honestly. Right: a narrative answer with per-claim sec.gov citations.",
     how_pending: "▶ A 60–90 s screen capture of this flow is in the pipeline.",
 
     arch_title: "Architecture",
@@ -105,7 +105,7 @@ const I18N = {
     how_lede:
       "Ключевой сценарий: шаг вернул пусто, оркестратор переигрывает его на глазах, и повтор даёт ответ с цитатами. Рассуждение стримится первым (AG-UI) — видно, как «думает» аналитик.",
     how_cap:
-      "Слева: пустой шаг переигрывается вживую. Справа: повторный воркер отвечает с цитатами sec.gov по каждому утверждению.",
+      "Слева: пустой шаг переигрывается вживую, а граница данных признаётся честно. Справа: нарративный ответ с цитатами sec.gov по каждому утверждению.",
     how_pending: "▶ Экранная запись этого сценария на 60–90 с — в работе.",
 
     arch_title: "Архитектура",

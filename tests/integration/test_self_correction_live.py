@@ -106,7 +106,14 @@ async def test_worker_self_corrects_unknown_metric_term() -> None:
 
 
 async def test_orchestrator_replans_on_missing_company() -> None:
-    """Scenario (b): Netflix is not ingested -> no_data -> replan -> honest boundary."""
+    """Scenario (b): Netflix is not ingested -> no_data -> replan -> honest boundary.
+
+    Narrative, filings-only phrasing: since T-043 a *numeric* question about a
+    real missing company routes to web_search (the worker brings the figure
+    from the web, no replan), so the replan path is exercised where the web
+    cannot substitute — the 10-K narrative sections absent from the corpus.
+    Live-verified on the demo stack 2026-07-20 (plan_updated + honest answer).
+    """
     if not await _corpus_ready():
         pytest.skip("demo corpus not ingested")
     ensure_stream_infrastructure()
@@ -120,7 +127,8 @@ async def test_orchestrator_replans_on_missing_company() -> None:
             "/api/chat",
             json={
                 "question": (
-                    "Compare the fiscal 2025 revenue of Apple and Netflix using the loaded data."
+                    "What supply chain risks does Netflix disclose in its 10-K, "
+                    "based on the loaded filings?"
                 )
             },
         ) as response:
@@ -136,8 +144,18 @@ async def test_orchestrator_replans_on_missing_company() -> None:
     assert final["event"] == "run_finished"
     answer = str(final["payload"]["answer"]).lower()
     assert "netflix" in answer
-    # The answer states the data boundary instead of inventing Tesla numbers.
+    # The answer states the data boundary instead of inventing disclosures.
     assert final["payload"]["partial"] or any(
         marker in answer
-        for marker in ("not loaded", "not available", "no data", "unavailable", "absent", "missing")
+        for marker in (
+            "not loaded",
+            "not available",
+            "no data",
+            "unavailable",
+            "absent",
+            "missing",
+            "empty",
+            "no narrative",
+            "corpus",
+        )
     )

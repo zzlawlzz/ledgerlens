@@ -71,11 +71,11 @@ Full layer/component breakdown: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | Capability | What you see | Proof |
 |---|---|---|
-| **Conversational UI** | A chat interface with a live narrator ("searching the web…"), an animated plan/step timeline, a rendered markdown answer, cost/token summary, dark/light themes and EN/RU. | [live demo](https://ledgerlens.space/app/) |
+| **Conversational UI** | A chat interface with a live narrator ("searching the web…"), an animated plan/step timeline, a rendered markdown answer, cost/token summary, dark/light themes and EN/RU. | [live demo](https://ledgerlens.space/app/) ![chat UI](demo/screenshots/self_correction_worker.png) |
 | **Streamed plan** | The orchestrator's plan and each step appear live as the run executes (AG-UI). | [demo/self_correction.md](demo/self_correction.md) |
-| **Self-correction** | A step that returns nothing gets re-planned and retried, in view. | ![replan](demo/screenshots/self_correction_replan.png) |
-| **Citations** | Narrative answers carry `sec.gov` / MOEX source links per claim. | ![worker](demo/screenshots/self_correction_worker.png) |
-| **Trust-tiered web search** | When a company or figure isn't in the corpus, the agent searches the web, badges each source's trust, and caches the facts it finds so the next run answers from the DB. | [live demo](https://ledgerlens.space/app/) |
+| **Self-correction** | A step that returns nothing gets re-planned and retried, in view — and a genuinely absent figure is conceded honestly, not invented. | ![replan](demo/screenshots/self_correction_replan.png) |
+| **Citations** | Narrative answers carry `sec.gov` / MOEX source links per claim. | ![citations](demo/screenshots/citations.png) |
+| **Trust-tiered web search** | When a company or figure isn't in the corpus, the agent searches the web, badges each source's trust, and caches the facts it finds so the next run answers from the DB. | [live demo](https://ledgerlens.space/app/) ![web search](demo/screenshots/web_search.png) |
 | **Observability** | Latency, cost, local-vs-cloud split and eval quality in Grafana. | ![grafana](demo/screenshots/grafana_operations.png) |
 
 ## Quick start (full stack + UI)
