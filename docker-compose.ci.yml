@@ -1,25 +1,36 @@
 # CI / eval overlay (T-030 / §3 эталонный full-eval).
 #
-# The base docker-compose.yml publishes the MCP servers on host ports
-# 8765/8766/8767 purely "for dev tests / MCP inspector" — the app reaches them
-# over the compose network by service name (MCP_SQL_URL=http://mcp-sql:8765/mcp
-# etc.), so the published host ports are never used by the eval harness.
+# The eval stack runs on the self-hosted workstation runner — the same machine
+# that hosts the always-on demo stack (this repo's compose project), which
+# already holds host ports 8000 (app), 5432 (postgres), 6333 (qdrant),
+# 8765-8768 (MCP servers, dev inspector), 8081 (worker A2A), 3000/3001
+# (web/grafana). A second compose project publishing the same ports would abort
+# `docker compose up` with "port is already allocated" before a single case is
+# scored, so this overlay:
 #
-# On the self-hosted EPYC runner (Q-22=A) the eval stack is co-located with the
-# always-on demo / distributed A2A stack, whose deploy/worker-node/compose.mcp-awg.yml
-# binds the same MCP servers to the AmneziaWG tunnel address (10.9.0.1:8765/…).
-# The eval stack's 0.0.0.0:8765 publish then collides with that binding
-# ("Bind for 10.9.0.1:8765 failed: port is already allocated"), so `docker
-# compose up` aborts before a single case is scored (run 29292555409). Dropping
-# the eval stack's MCP host publishes removes the collision without touching the
-# base file (dev keeps its inspector ports) or any internal wiring.
+#   * shifts the ports the eval harness actually needs from the host
+#     (app → 18000, qdrant → 16333; postgres is shifted to 15432 via
+#     POSTGRES_PORT in the CI .env, the base file already parametrizes it);
+#   * drops the publishes nothing in CI ever uses (MCP inspector ports,
+#     worker A2A port) — the app reaches those services over the compose
+#     network by service name (MCP_SQL_URL=http://mcp-sql:8765/mcp etc.).
 #
 # `!override []` replaces (not appends to) the base `ports` list; requires
-# Compose ≥ 2.24 (the runner is on v5.x).
+# Compose ≥ 2.24.
 services:
+  app:
+    ports: !override
+      - "18000:8000"
+  qdrant:
+    ports: !override
+      - "16333:6333"
+  worker:
+    ports: !override []
   mcp-sql:
     ports: !override []
   mcp-rag:
     ports: !override []
   mcp-enrich:
+    ports: !override []
+  mcp-websearch:
     ports: !override []

@@ -13,8 +13,12 @@ on:
         type: choice
         options: [ci, full]
         default: ci
-  schedule:
-    - cron: "30 3 * * *"   # nightly
+  # Nightly schedule is PAUSED until the workstation runner (labels:
+  # self-hosted, ledgerlens-workstation) is registered — the previous EPYC
+  # runner is decommissioned, and an un-servable schedule would just queue and
+  # fail every day. Re-enable once the runner is online:
+  # schedule:
+  #   - cron: "30 3 * * *"   # nightly
   pull_request:
     types: [labeled, synchronize, reopened]
 
@@ -26,20 +30,26 @@ permissions:
 jobs:
   eval:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'eval')
-    # Self-hosted runner on the home EPYC node (Q-22=A): the free GitHub runner
-    # has 2 vCPUs, on which the CPU-heavy jina cross-encoder rerank inside
-    # mcp-rag could not finish within the worker deadline for every narrative
-    # case, so citation_coverage capped below the strict 1.0 gate on a corpus
-    # that scores 1.0 locally. The EPYC (128 threads / 125 GB) removes that
-    # hardware ceiling, so citation is measured honestly. Requires the runner
-    # service (labels: self-hosted, ledgerlens-epyc) to be online.
-    runs-on: [self-hosted, ledgerlens-epyc]
+    # Self-hosted runner on the project workstation (the same machine that
+    # hosts the demo stack; the former EPYC node is decommissioned). Rationale
+    # for self-hosted (Q-22=A) unchanged: the free GitHub runner has 2 vCPUs,
+    # on which the CPU-heavy jina cross-encoder rerank inside mcp-rag could
+    # not finish within the worker deadline for every narrative case, so
+    # citation_coverage capped below the strict 1.0 gate on a corpus that
+    # scores 1.0 locally. Requires the runner service (labels: self-hosted,
+    # ledgerlens-workstation) to be online.
+    runs-on: [self-hosted, ledgerlens-workstation]
+    defaults:
+      run:
+        # Explicit bash so the job works whether the workstation runner is
+        # registered under WSL (Linux) or natively on Windows (Git Bash).
+        shell: bash
     env:
       # Self-hosted runner: the HF Xet download accelerator writes to
       # ~/.cache/huggingface/xet, which failed with a permission error on the
       # persistent runner home. Disable it.
       HF_HUB_DISABLE_XET: "1"
-      # The EPYC node sits behind an RU uplink where the HuggingFace CDN
+      # The workstation sits behind an RU uplink where the HuggingFace CDN
       # (model blobs) is unreachable — the API resolves but downloads hang. So
       # run fully offline against the fastembed models already provisioned on
       # the runner (see "Link persistent fastembed models" below).
@@ -60,20 +70,30 @@ jobs:
           sed -i "s/^DEEPSEEK_API_KEY=.*/DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}/" .env
           sed -i "s/^LOCAL_MODEL=.*/LOCAL_MODEL=/" .env
           sed -i "s/^A2A_TOKEN=.*/A2A_TOKEN=ci-a2a-token/" .env
+          # Host ports shifted so the eval stack coexists with the always-on
+          # demo stack on the workstation (see docker-compose.ci.yml).
+          sed -i "s/^POSTGRES_PORT=.*/POSTGRES_PORT=15432/" .env
 
-      # Self-hosted (RU node): the HF CDN is unreachable, so the ~3.5GB
+      # Self-hosted (RU uplink): the HF CDN is unreachable, so the ~3.5GB
       # fastembed models can't be downloaded here. Reuse the models already
-      # provisioned on the runner (the demo stack's cache) by symlinking them
+      # provisioned on the runner (the demo stack's cache) by linking them
       # into the workspace — actions/checkout's clean wiped the previous run's
-      # copy, and the target lives outside the workspace so it survives. Docker
-      # bind-mounts follow the symlink, so the host warm-up and the mcp-rag
-      # container both hit a populated ./data/cache/fastembed offline.
+      # copy, and the source lives outside the workspace so it survives.
+      # LEDGERLENS_FASTEMBED_CACHE is a runner-level env var pointing at that
+      # persistent cache (on the workstation: the repo checkout's
+      # data/cache/fastembed). On Windows/Git Bash `ln -s` silently degrades
+      # to a copy, which is equally fine for the bind mount.
       - name: Link persistent fastembed models
         run: |
+          src="${LEDGERLENS_FASTEMBED_CACHE:-$HOME/ledgerlens-demo/data/cache/fastembed}"
+          if [ ! -d "$src" ]; then
+            echo "::error::fastembed cache not found at $src — set LEDGERLENS_FASTEMBED_CACHE in the runner's env to a populated cache dir (HF CDN is unreachable from this uplink, models cannot be downloaded on the fly)."
+            exit 1
+          fi
           mkdir -p data/cache
           rm -rf data/cache/fastembed
-          ln -sfn "$HOME/ledgerlens-demo/data/cache/fastembed" data/cache/fastembed
-          echo "linked; models:"; ls "$HOME/ledgerlens-demo/data/cache/fastembed" | head
+          ln -sfn "$src" data/cache/fastembed
+          echo "linked from $src; models:"; ls "$src" | head
 
       - name: Warm up embedding/reranker models
         run: |
@@ -97,20 +117,25 @@ jobs:
           workflow_conclusion: success
           if_no_artifact_found: fail
 
-      # -f docker-compose.ci.yml drops the dev-only MCP host-port publishes so
-      # the eval stack can coexist with the always-on demo / AWG stack on the
-      # self-hosted EPYC runner (which binds the MCP servers on 10.9.0.1:8765/…).
+      # -f docker-compose.ci.yml shifts/drops the host-port publishes so the
+      # eval stack can coexist with the always-on demo stack on the
+      # workstation runner (which holds 8000/5432/6333/8765-8768/8081).
       # Without it, `up` aborts with "port is already allocated" before scoring.
       - run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres qdrant --wait
       - name: Migrate schema
         env:
           POSTGRES_HOST: localhost
+          POSTGRES_PORT: "15432"
           POSTGRES_PASSWORD: ci-password
           POSTGRES_RO_PASSWORD: ci-ro-password
           GRAFANA_RO_PASSWORD: ci-grafana-ro-password
         run: uv run alembic upgrade head
       - name: Restore demo snapshot
-        run: uv run python scripts/eval_snapshot.py restore --dir snapshot/eval_demo
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "15432"
+          POSTGRES_PASSWORD: ci-password
+        run: uv run python scripts/eval_snapshot.py restore --dir snapshot/eval_demo --qdrant-url http://localhost:16333
 
       # No `ollama` profile (T-017/T-018 no-local mode) + empty LOCAL_MODEL
       # above: the router drops the local tier at startup, cloud-only routing.
@@ -120,18 +145,17 @@ jobs:
         id: eval_run
         env:
           POSTGRES_HOST: localhost
+          POSTGRES_PORT: "15432"
           POSTGRES_PASSWORD: ci-password
           POSTGRES_RO_PASSWORD: ci-ro-password
           # Manual dispatch may pick 'full'; nightly/PR default to 'ci'.
           EVAL_PROFILE: ${{ github.event.inputs.profile || 'ci' }}
         run: |
           set +e
-          # --concurrency 1: kept for deterministic, low-variance scoring. On
-          # the EPYC runner (Q-22=A) the 2-vCPU rerank contention that once
-          # capped citation_coverage is gone, so concurrency could be raised for
-          # speed — left at 1 until the self-hosted citation=1.0 result is
-          # confirmed, then it can be bumped.
-          uv run python -m eval.run --profile "$EVAL_PROFILE" --base-url http://localhost:8000 --concurrency 1
+          # --concurrency 1: kept for deterministic, low-variance scoring
+          # (self-hosted citation=1.0 was confirmed on runs 29378924962 /
+          # 29390701909; concurrency can be bumped for speed if desired).
+          uv run python -m eval.run --profile "$EVAL_PROFILE" --base-url http://localhost:18000 --concurrency 1
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Locate this run's report
